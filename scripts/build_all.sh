@@ -23,11 +23,11 @@ for target in "${TARGETS[@]}"; do
     BIN_COORD="${OUT_DIR}/isthmus-coord${EXT}"
 
     echo "[BUILD] Target: ${OS} / ${ARCH} -> ${BIN_ISTHMUS}"
-    GOOS="$OS" GOARCH="$ARCH" CGO_ENABLED=0 go build -ldflags="-s -w" -o "$BIN_ISTHMUS" ./cmd/isthmus
+    GOOS="$OS" GOARCH="$ARCH" CGO_ENABLED=0 go build -trimpath -o "$BIN_ISTHMUS" ./cmd/isthmus
 
     if [ "$OS" = "linux" ] || ([ "$OS" = "windows" ] && [ "$ARCH" = "amd64" ]); then
         echo "[BUILD] Target: ${OS} / ${ARCH} -> ${BIN_COORD}"
-        GOOS="$OS" GOARCH="$ARCH" CGO_ENABLED=0 go build -ldflags="-s -w" -o "$BIN_COORD" ./cmd/isthmus-coord
+        GOOS="$OS" GOARCH="$ARCH" CGO_ENABLED=0 go build -trimpath -o "$BIN_COORD" ./cmd/isthmus-coord
     fi
 done
 

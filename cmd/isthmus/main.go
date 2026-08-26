@@ -263,9 +263,17 @@ func runServerLoop(args []string, isDaemon bool) {
 		cfg.SharedDir = *rootDir
 	}
 
+	var allowedKeys []string
+	for _, peer := range cfg.Peers {
+		if peer.Allowed && peer.PublicKey != "" {
+			allowedKeys = append(allowedKeys, peer.PublicKey)
+		}
+	}
+
 	sftpServer, err := fileserver.NewServer(fileserver.ServerConfig{
-		Port:    cfg.SFTPPort,
-		RootDir: cfg.SharedDir,
+		Port:        cfg.SFTPPort,
+		RootDir:     cfg.SharedDir,
+		AllowedKeys: allowedKeys,
 	})
 	if err != nil {
 		logger.Error("Failed to create SFTP server: %v", err)
@@ -343,7 +351,8 @@ func connectViaRouter(target string) (*fileserver.Client, string, error) {
 	}
 
 	client, err := fileserver.NewClientFromConn(routed.Conn, fileserver.ClientConfig{
-		Endpoint: routed.Addr,
+		Endpoint:   routed.Addr,
+		PrivateKey: cfg.PrivateKey,
 	})
 	if err != nil {
 		routed.Conn.Close()

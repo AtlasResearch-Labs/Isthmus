@@ -15,12 +15,15 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	"isthmus/internal/logger"
+	"isthmus/pkg/identity"
 )
 
 type ClientConfig struct {
-	Endpoint string
-	Password string
-	Timeout  time.Duration
+	Endpoint   string
+	Password   string
+	PrivateKey string
+	Signer     ssh.Signer
+	Timeout    time.Duration
 }
 
 type ProgressCallback func(bytesTransferred, totalBytes int64, speedBytesPerSec float64)
@@ -50,20 +53,33 @@ func NewClientFromConn(conn net.Conn, cfg ClientConfig) (*Client, error) {
 		cfg.Timeout = 10 * time.Second
 	}
 
-	sshConfig := &ssh.ClientConfig{
-		User:            "isthmus",
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-		Timeout:         cfg.Timeout,
+	var authMethods []ssh.AuthMethod
+
+	if cfg.Signer != nil {
+		authMethods = append(authMethods, ssh.PublicKeys(cfg.Signer))
+	} else if cfg.PrivateKey != "" {
+		if rawKey, err := identity.ParseKey(cfg.PrivateKey); err == nil {
+			if signer, err := identity.SSHSignerFromSeed(rawKey); err == nil {
+				authMethods = append(authMethods, ssh.PublicKeys(signer))
+			}
+		} else if parsedSigner, err := ssh.ParsePrivateKey([]byte(cfg.PrivateKey)); err == nil {
+			authMethods = append(authMethods, ssh.PublicKeys(parsedSigner))
+		}
 	}
 
 	if cfg.Password != "" {
-		sshConfig.Auth = []ssh.AuthMethod{
-			ssh.Password(cfg.Password),
-		}
-	} else {
-		sshConfig.Auth = []ssh.AuthMethod{
-			ssh.Password(""),
-		}
+		authMethods = append(authMethods, ssh.Password(cfg.Password))
+	}
+
+	if len(authMethods) == 0 {
+		authMethods = append(authMethods, ssh.Password(""))
+	}
+
+	sshConfig := &ssh.ClientConfig{
+		User:            "isthmus",
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Auth:            authMethods,
+		Timeout:         cfg.Timeout,
 	}
 
 	addrStr := cfg.Endpoint

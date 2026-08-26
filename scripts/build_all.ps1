@@ -32,14 +32,14 @@ foreach ($t in $targets) {
     $env:GOARCH = $arch
     $env:CGO_ENABLED = "0"
 
-    go build -ldflags="-s -w" -o $binIsthmus ./cmd/isthmus
+    go build -trimpath -o $binIsthmus ./cmd/isthmus
     if ($LASTEXITCODE -ne 0) {
         Write-Error "Failed to build isthmus for $osName/$arch"
     }
 
     if ($osName -eq "linux" -or ($osName -eq "windows" -and $arch -eq "amd64")) {
         Write-Host "[BUILD] Target: $osName / $arch -> $binCoord"
-        go build -ldflags="-s -w" -o $binCoord ./cmd/isthmus-coord
+        go build -trimpath -o $binCoord ./cmd/isthmus-coord
         if ($LASTEXITCODE -ne 0) {
             Write-Error "Failed to build isthmus-coord for $osName/$arch"
         }

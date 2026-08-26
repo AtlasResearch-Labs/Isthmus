@@ -1,6 +1,7 @@
 package fileserver
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -10,12 +11,14 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
 
 	"isthmus/internal/logger"
+	"isthmus/pkg/identity"
 )
 
 type ServerConfig struct {
@@ -24,6 +27,7 @@ type ServerConfig struct {
 	HostKeyPEM   []byte
 	AuthPassword string
 	AllowedKeys  []string
+	NoClientAuth bool
 	ReadOnly     bool
 }
 
@@ -78,11 +82,46 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		return nil, fmt.Errorf("failed to parse host key: %w", err)
 	}
 
-	sshConfig := &ssh.ServerConfig{
-		NoClientAuth: true,
-	}
+	sshConfig := &ssh.ServerConfig{}
 
-	if cfg.AuthPassword != "" {
+	if len(cfg.AllowedKeys) > 0 {
+		sshConfig.NoClientAuth = false
+		sshConfig.PublicKeyCallback = func(c ssh.ConnMetadata, pubKey ssh.PublicKey) (*ssh.Permissions, error) {
+			clientPubKeyBytes := pubKey.Marshal()
+			for _, allowed := range cfg.AllowedKeys {
+				trimmed := strings.TrimSpace(allowed)
+				if trimmed == "" {
+					continue
+				}
+				// 1. Direct OpenSSH authorized_key comparison
+				if parsedAllowed, _, _, _, err := ssh.ParseAuthorizedKey([]byte(trimmed)); err == nil {
+					if bytes.Equal(parsedAllowed.Marshal(), clientPubKeyBytes) {
+						return &ssh.Permissions{
+							Extensions: map[string]string{
+								"pubkey-fp": ssh.FingerprintSHA256(pubKey),
+							},
+						}, nil
+					}
+				}
+				// 2. Base64 / Hex Curve25519 or Ed25519 identity key
+				if rawKey, err := identity.ParseKey(trimmed); err == nil {
+					authStr := identity.SSHAuthorizedKeyFromPubKey(rawKey)
+					if authStr != "" {
+						if pKey, _, _, _, err := ssh.ParseAuthorizedKey([]byte(authStr)); err == nil {
+							if bytes.Equal(pKey.Marshal(), clientPubKeyBytes) {
+								return &ssh.Permissions{
+									Extensions: map[string]string{
+										"pubkey-fp": ssh.FingerprintSHA256(pubKey),
+									},
+								}, nil
+							}
+						}
+					}
+				}
+			}
+			return nil, fmt.Errorf("public key rejected for client %q (fingerprint: %s)", c.User(), ssh.FingerprintSHA256(pubKey))
+		}
+	} else if cfg.AuthPassword != "" {
 		sshConfig.NoClientAuth = false
 		sshConfig.PasswordCallback = func(c ssh.ConnMetadata, pass []byte) (*ssh.Permissions, error) {
 			if string(pass) == cfg.AuthPassword {
@@ -90,6 +129,9 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 			}
 			return nil, fmt.Errorf("password rejected for %q", c.User())
 		}
+	} else {
+		// If explicitly requested or running open LAN test
+		sshConfig.NoClientAuth = true
 	}
 
 	sshConfig.AddHostKey(signer)

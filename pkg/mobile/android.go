@@ -45,17 +45,19 @@ func StartAgent(configJSON string) string {
 		return formatStatus(true, "Agent is already running", "", "")
 	}
 
-	var cfg config.Config
+	var cfg *config.Config
 	if configJSON != "" {
-		if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
+		var parsed config.Config
+		if err := json.Unmarshal([]byte(configJSON), &parsed); err != nil {
 			return formatStatus(false, fmt.Sprintf("invalid config JSON: %v", err), "", "")
 		}
+		cfg = &parsed
 	} else {
 		defaultCfg, err := config.NewDefaultConfig("android-device")
 		if err != nil {
 			return formatStatus(false, fmt.Sprintf("failed to init default config: %v", err), "", "")
 		}
-		cfg = *defaultCfg
+		cfg = defaultCfg
 	}
 
 	srv, err := fileserver.NewServer(fileserver.ServerConfig{
@@ -72,7 +74,7 @@ func StartAgent(configJSON string) string {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	agentCancel = cancel
-	activeCfg = &cfg
+	activeCfg = cfg
 	activeSFTP = srv
 
 	disc := discovery.NewDiscoveryService(
@@ -88,7 +90,7 @@ func StartAgent(configJSON string) string {
 	_ = disc.Start(ctx)
 
 	if cfg.CoordServer != "" {
-		coordClient := coord.NewClient(cfg.CoordServer, "", &cfg)
+		coordClient := coord.NewClient(cfg.CoordServer, "", cfg)
 		_, _ = coordClient.Register(ctx)
 		coordClient.StartHeartbeatLoop(ctx, 25*time.Second)
 	}

@@ -1,0 +1,28 @@
+# Binaries and build outputs
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test outputs and logs
+*.test
+*.out
+*.log
+coverage.txt
+
+# Local runtime directories
+IsthmusShare/
+tempmediaStorage/
+
+# Internal AI agent rules, roadmaps, and planning docs
+.agents/
+ISTHMUS.md
+docs/
+
+# OS and IDE configuration
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

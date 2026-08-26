@@ -18,8 +18,13 @@ tempmediaStorage/
 
 # Internal AI agent rules, roadmaps, and planning docs
 .agents/
-ISTHMUS.md
 docs/
+DEBUG_FINDINGS.md
+ISTHMUS.md
+
+# Failsafe: Ignore all root-level markdown files except README.md
+*.md
+!README.md
 
 # OS and IDE configuration
 .DS_Store
@@ -27,4 +32,5 @@ Thumbs.db
 .vscode/
 .idea/
 
+# Archives
 *.zip

@@ -1,6 +1,12 @@
-# Isthmus
+<p align="center">
+  <img src="assets/isthmus-logo.png" alt="Isthmus Logo" width="180" height="180" />
+</p>
 
-Cross-device secure tunnel and file access system designed to connect machines seamlessly across LAN and WAN networks.
+<h1 align="center">Isthmus</h1>
+
+<p align="center">
+  <b>Cross-device secure tunnel and file access system designed to connect machines seamlessly across LAN and WAN networks.</b>
+</p>
 
 ---
 

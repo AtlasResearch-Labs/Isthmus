@@ -7,13 +7,16 @@ Cross-device secure tunnel and file access system designed to connect machines s
 ## Features
 
 - **Curve25519 Cryptographic Identity**: Every node generates standard Curve25519 keypairs and SHA-256 derived device IDs.
-- **Embedded SFTP Engine**: Zero dependency on OS SSH daemons. The agent runs an embedded SFTP server and client with cross-platform parity across Windows, Linux, and macOS.
+- **Embedded SFTP Engine**: Zero dependency on OS SSH daemons. The agent runs an embedded SFTP server and client with cross-platform parity across Windows, Linux, macOS, and Android.
 - **3-Tier Auto-Routing**:
   - **Tier 1 (LAN Direct)**: Zero-config subnet discovery via UDP broadcast beacons.
   - **Tier 2 (WAN Direct)**: STUN-style public IP:port exchange for direct P2P connectivity.
   - **Tier 3 (DERP Relay Fallback)**: Encrypted packet relay when firewalls or symmetric NAT block direct connections.
-- **Recursive Delta Sync**: Scans folder hierarchies, compares file sizes/timestamps, and synchronizes only modified or missing files.
-- **Resumable Transfers**: Automatically resumes interrupted transfers from the last received byte offset and verifies end-to-end SHA-256 checksums.
+- **N-Device Mesh Tailnet**: Automatically synchronizes and discovers all active nodes across your private network mesh.
+- **Retro Windows OLED Black TUI**: Interactive keyboard-driven file explorer on true OLED black with crisp white, gray borders, and classic Windows menu blue headers.
+- **Per-Peer Path ACLs**: Granular permissions per peer, including read/write toggles, path sandboxing (`AllowedPaths`), and security deny lists (`BlockedPaths`).
+- **Bandwidth Throttling**: Token bucket rate limiter supporting flexible throughput bounds (`--limit-rate 500k`, `2M`, `10M`).
+- **Recursive Delta Sync & Resume**: Scans folder hierarchies, compares file sizes/timestamps, transfers only modified files, and resumes partial downloads with SHA-256 verification.
 - **Crypto-Blind Control Plane**: Coordination and relay servers only pass routing headers and encrypted packets; payload data is never decrypted or inspected.
 
 ---
@@ -57,9 +60,13 @@ cd Isthmus
 # Download dependencies
 go mod download
 
-# Build binaries
+# Build for current platform
 go build -o bin/isthmus ./cmd/isthmus
 go build -o bin/isthmus-coord ./cmd/isthmus-coord
+
+# Or cross-compile for all platforms (Windows, Linux, macOS)
+powershell -File scripts/build_all.ps1   # On Windows
+bash scripts/build_all.sh               # On Linux / macOS
 ```
 
 ---
@@ -77,9 +84,13 @@ isthmus init --name "my-pc"
 isthmus init --name "my-pc" --coord "http://coord.example.com:8080"
 ```
 
-### 2. Check Node Status
+### 2. Check Node Status & Devices
 ```bash
+# View local node status
 isthmus status
+
+# View peer directory
+isthmus devices
 ```
 
 ### 3. Discover Peers on LAN
@@ -97,32 +108,51 @@ isthmus serve --root "/path/to/share"
 isthmus daemon
 ```
 
-### 5. Browse Remote Files
-List files on a remote peer:
+### 5. Interactive Retro Windows TUI File Explorer
+Launch the interactive terminal UI to browse, download, and sync files with arrow keys:
 ```bash
-isthmus browse <peer-name-or-id> [remote-path]
+isthmus ui <peer-name-or-id> [remote-path]
 ```
 
-### 6. Transfer Files
+### 6. Transfer Files with Rate Limiting
 ```bash
-# Pull a file (with auto-resume and SHA-256 verification)
-isthmus pull <peer-name-or-id> <remote-file> [local-destination]
+# Pull a file with bandwidth limit (with auto-resume and SHA-256 verification)
+isthmus pull --limit-rate 2M <peer> <remote-file> [local-destination]
 
 # Push a file to peer
-isthmus push <peer-name-or-id> <local-file> [remote-destination]
+isthmus push --limit-rate 5M <peer> <local-file> [remote-destination]
 ```
 
-### 7. Folder Synchronization
+### 7. Directory Delta Sync
 Recursively delta-sync an entire directory tree:
 ```bash
-isthmus sync <peer-name-or-id> <remote-dir> [local-dir]
+isthmus sync <peer> [remote-dir] [local-dir]
 ```
 
-### 8. Coordination Server
-Manage connection to the coordination control plane:
+### 8. Path Access Control Lists (ACLs)
 ```bash
-isthmus coord set http://coord.example.com:8080
-isthmus coord status
+# Restrict peer to a specific subfolder
+isthmus acl laptop scope "projects/demo"
+
+# Block sensitive folders
+isthmus acl laptop block ".env"
+
+# Toggle write permissions
+isthmus acl laptop deny-write
+```
+
+### 9. Tailnet Mesh Synchronization
+```bash
+isthmus mesh sync
+```
+
+### 10. Background OS Service Management
+```bash
+# Install as background Windows Service or Linux systemd daemon
+isthmus service install
+isthmus service start
+isthmus service status
+isthmus service stop
 ```
 
 ---
@@ -138,10 +168,12 @@ Deploy the coordination server binary on a public cloud VM:
 
 ---
 
-## Dependencies
+## Supported Platforms
 
-- `golang.org/x/crypto`: Curve25519 scalar multiplication and SSH protocol transport.
-- `github.com/pkg/sftp`: Embedded SFTP protocol implementation.
+- **Windows**: `windows/amd64`, `windows/arm64`
+- **Linux**: `linux/amd64`, `linux/arm64` (ARM cloud servers & Raspberry Pi)
+- **macOS**: `darwin/arm64` (Apple Silicon M1/M2/M3), `darwin/amd64` (Intel)
+- **Android**: `pkg/mobile` Go bridge for embedding via `gomobile`
 
 ---
 

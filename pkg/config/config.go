@@ -20,6 +20,7 @@ type Peer struct {
 	LastSeenEndpoint string    `json:"last_seen_endpoint,omitempty"`
 	LastSeenTime     time.Time `json:"last_seen_time,omitempty"`
 	Allowed          bool      `json:"allowed"`
+	ACL              PeerACL   `json:"acl,omitempty"`
 }
 
 type Config struct {

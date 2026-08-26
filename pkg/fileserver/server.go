@@ -24,6 +24,7 @@ type ServerConfig struct {
 	HostKeyPEM   []byte
 	AuthPassword string
 	AllowedKeys  []string
+	ReadOnly     bool
 }
 
 type Server struct {
@@ -190,11 +191,13 @@ func (s *Server) handleConnection(nConn net.Conn) {
 func (s *Server) serveSFTP(channel ssh.Channel) {
 	defer channel.Close()
 
-	server, err := sftp.NewServer(
-		channel,
-		sftp.WithDebug(io.Discard),
-		sftp.WithServerWorkingDirectory(s.config.RootDir),
-	)
+	var opts []sftp.ServerOption
+	opts = append(opts, sftp.WithDebug(io.Discard), sftp.WithServerWorkingDirectory(s.config.RootDir))
+	if s.config.ReadOnly {
+		opts = append(opts, sftp.ReadOnly())
+	}
+
+	server, err := sftp.NewServer(channel, opts...)
 	if err != nil {
 		s.log.Error("Failed to initialize SFTP handler: %v", err)
 		return

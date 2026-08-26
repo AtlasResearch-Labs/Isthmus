@@ -203,3 +203,28 @@ func (c *Client) StartHeartbeatLoop(ctx context.Context, interval time.Duration)
 		}
 	}()
 }
+
+func (c *Client) ListDevices(ctx context.Context) ([]DeviceEntry, error) {
+	url := fmt.Sprintf("%s/api/v1/devices", c.serverURL)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create http request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("list devices request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("server returned status: %s", resp.Status)
+	}
+
+	var devices []DeviceEntry
+	if err := json.NewDecoder(resp.Body).Decode(&devices); err != nil {
+		return nil, fmt.Errorf("failed to decode devices response: %w", err)
+	}
+
+	return devices, nil
+}

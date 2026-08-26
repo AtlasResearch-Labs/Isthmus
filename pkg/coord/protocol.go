@@ -84,3 +84,12 @@ type PeerExchangeResponse struct {
 	LastSeen      time.Time `json:"last_seen"`
 	Error         string    `json:"error,omitempty"`
 }
+
+type DeviceEntry struct {
+	DeviceID      string    `json:"device_id"`
+	DeviceName    string    `json:"device_name"`
+	PublicKey     string    `json:"public_key"`
+	VirtualIP     string    `json:"virtual_ip"`
+	ReflectedAddr string    `json:"reflected_addr"`
+	LastSeen      time.Time `json:"last_seen"`
+}

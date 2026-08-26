@@ -5,7 +5,8 @@
 <h1 align="center">Isthmus</h1>
 
 <p align="center">
-  <b>Cross-device secure tunnel and file access system designed to connect machines seamlessly across LAN and WAN networks.</b>
+  <b>Cross-device secure tunnel and file access system designed to connect machines seamlessly across LAN and WAN networks.</b><br>
+  <a href="docs/USER_MANUAL.md"><b>[ Read the Complete User Manual &amp; Tutorials ]</b></a>
 </p>
 
 ---

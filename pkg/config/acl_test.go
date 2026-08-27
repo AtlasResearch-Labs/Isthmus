@@ -25,9 +25,15 @@ func TestValidatePathAccess(t *testing.T) {
 		t.Fatal("expected write access error, got nil")
 	}
 
-	// 3. Blocked path
+	// 3. Blocked path (including case-insensitive evasion attempts)
 	if err := ValidatePathAccess(acl, ".ssh/id_rsa", false); err == nil {
 		t.Fatal("expected blocked path error for .ssh, got nil")
+	}
+	if err := ValidatePathAccess(acl, ".SSH/id_rsa", false); err == nil {
+		t.Fatal("expected case-insensitive blocked path error for .SSH, got nil")
+	}
+	if err := ValidatePathAccess(acl, ".ENV", false); err == nil {
+		t.Fatal("expected case-insensitive blocked path error for .ENV, got nil")
 	}
 	if err := ValidatePathAccess(acl, "projects/secret/keys.json", false); err == nil {
 		t.Fatal("expected blocked path error for projects/secret, got nil")

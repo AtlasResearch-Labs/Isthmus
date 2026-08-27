@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"sync"
+	"time"
 
 	"isthmus/internal/logger"
 )
@@ -14,6 +15,14 @@ type clientSession struct {
 	conn     net.Conn
 	sendChan chan *Frame
 	closed   chan struct{}
+	once     sync.Once
+}
+
+func (cs *clientSession) Close() {
+	cs.once.Do(func() {
+		close(cs.closed)
+		cs.conn.Close()
+	})
 }
 
 type Server struct {
@@ -52,7 +61,8 @@ func (s *Server) ListenAndServe(addr string) error {
 				return nil
 			default:
 				s.log.Debug("Relay accept error: %v", err)
-				return err
+				time.Sleep(50 * time.Millisecond)
+				continue
 			}
 		}
 
@@ -84,7 +94,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 
 	s.mu.Lock()
 	if existing, ok := s.clients[session.deviceID]; ok {
-		close(existing.closed)
+		existing.Close()
 		delete(s.clients, session.deviceID)
 	}
 	s.clients[session.deviceID] = session
@@ -126,7 +136,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 			delete(s.clients, session.deviceID)
 		}
 		s.mu.Unlock()
-		close(session.closed)
+		session.Close()
 		s.log.Info("Device %s disconnected from relay", session.deviceID)
 	}()
 

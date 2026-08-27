@@ -44,13 +44,13 @@ func ValidatePathAccess(acl PeerACL, subPath string, isWrite bool) error {
 		return errors.New("access denied: peer read permission is disabled")
 	}
 
-	// Check blocked paths
+	// Check blocked paths (case-insensitive security hardening)
 	for _, blocked := range acl.BlockedPaths {
 		normBlocked := NormalizeSubpath(blocked)
 		if normBlocked == "" {
 			continue
 		}
-		if subPath == normBlocked || strings.HasPrefix(subPath, normBlocked+"/") {
+		if strings.EqualFold(subPath, normBlocked) || strings.HasPrefix(strings.ToLower(subPath), strings.ToLower(normBlocked)+"/") {
 			return fmt.Errorf("access denied: path '%s' is blocked by security ACL", subPath)
 		}
 	}
@@ -64,7 +64,9 @@ func ValidatePathAccess(acl PeerACL, subPath string, isWrite bool) error {
 				allowed = true
 				break
 			}
-			if subPath == normAllow || strings.HasPrefix(subPath, normAllow+"/") || strings.HasPrefix(normAllow, subPath) {
+			if strings.EqualFold(subPath, normAllow) ||
+				strings.HasPrefix(strings.ToLower(subPath), strings.ToLower(normAllow)+"/") ||
+				strings.HasPrefix(strings.ToLower(normAllow), strings.ToLower(subPath)+"/") {
 				allowed = true
 				break
 			}

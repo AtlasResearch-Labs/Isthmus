@@ -80,7 +80,8 @@ func (r *AutoRouter) DialPeer(ctx context.Context, target string) (*RoutedConnec
 
 	if err == nil && lanEndpoint != "" {
 		r.log.Info("Found LAN endpoint: %s. Connecting...", lanEndpoint)
-		conn, dialErr := net.DialTimeout("tcp", lanEndpoint, 2*time.Second)
+		dialer := &net.Dialer{Timeout: 2 * time.Second}
+		conn, dialErr := dialer.DialContext(ctx, "tcp", lanEndpoint)
 		if dialErr == nil {
 			r.log.Info("Established Tier 1 (LAN) connection with '%s' on %s", target, lanEndpoint)
 			return &RoutedConnection{Conn: conn, Tier: TierLAN, Addr: lanEndpoint}, nil
@@ -105,7 +106,8 @@ func (r *AutoRouter) DialPeer(ctx context.Context, target string) (*RoutedConnec
 	// Tier 2: Try Direct WAN endpoint
 	if peerInfo.PublicAddr != "" {
 		r.log.Info("Attempting Tier 2 direct WAN connection to %s...", peerInfo.PublicAddr)
-		conn, dialErr := net.DialTimeout("tcp", peerInfo.PublicAddr, 3*time.Second)
+		dialer := &net.Dialer{Timeout: 3 * time.Second}
+		conn, dialErr := dialer.DialContext(ctx, "tcp", peerInfo.PublicAddr)
 		if dialErr == nil {
 			r.log.Info("Established Tier 2 (WAN Direct) connection with '%s' on %s", target, peerInfo.PublicAddr)
 			return &RoutedConnection{Conn: conn, Tier: TierWANDirect, Addr: peerInfo.PublicAddr}, nil

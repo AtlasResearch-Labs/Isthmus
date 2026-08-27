@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
@@ -171,7 +172,8 @@ func (s *Server) acceptLoop() {
 				return
 			default:
 				s.log.Debug("Accept error: %v", err)
-				return
+				time.Sleep(50 * time.Millisecond)
+				continue
 			}
 		}
 
@@ -219,9 +221,12 @@ func (s *Server) handleConnection(nConn net.Conn) {
 				ok := false
 				switch req.Type {
 				case "subsystem":
-					if string(req.Payload[4:]) == "sftp" {
-						ok = true
-						go s.serveSFTP(channel)
+					if len(req.Payload) >= 4 {
+						subsystemName := string(req.Payload[4:])
+						if subsystemName == "sftp" {
+							ok = true
+							go s.serveSFTP(channel)
+						}
 					}
 				}
 				req.Reply(ok, nil)

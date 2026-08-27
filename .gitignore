@@ -16,15 +16,13 @@ coverage.txt
 IsthmusShare/
 tempmediaStorage/
 
-# Internal AI agent rules, roadmaps, and planning docs
+# Internal AI agent rules, roadmaps, and planning docs (NEVER COMMITTED)
 .agents/
-docs/
-DEBUG_FINDINGS.md
-ISTHMUS.md
+ai_docs/
 
 # Failsafe: Ignore all root-level markdown files except README.md
-*.md
-!README.md
+/*.md
+!/README.md
 
 # OS and IDE configuration
 .DS_Store

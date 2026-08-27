@@ -255,9 +255,9 @@ Isthmus will automatically resolve PC1 over Tier 2 (WAN Direct via STUN) or fall
 
 ---
 
-### Tutorial 3: Using the Dedicated Modern Desktop GUI
+### Tutorial 3: Using the Dedicated Retro Windows OLED Black Desktop GUI
 
-Isthmus provides a standalone graphical desktop interface (`isthmus gui` or `isthmus app`) with a modern, glassmorphic dark interface.
+Isthmus provides a standalone graphical desktop interface (`isthmus gui` or `isthmus app`) with a true OLED black (`#000000`) Retro Windows aesthetic.
 
 #### Launching the GUI:
 ```bash
@@ -269,10 +269,10 @@ isthmus gui --port 7788
 ```
 
 #### Graphical Desktop Features:
-- **Interactive File Explorer**: Breadcrumb navigation, double-click folder traversal, file size badges, and modern SVG file type icons.
-- **Drag-and-Drop Uploads**: Drag any files from your desktop directly onto the workspace dropzone to immediately stream to the active remote peer.
-- **Live Transfers Drawer**: Monitor real-time progress bars, live transfer speed gauges (MB/s), and ETA counters.
-- **Mesh Device Directory**: Visual cards showing all configured and discovered peer nodes with connection tier badges (LAN Direct, WAN STUN, DERP Relay).
+- **Interactive File Explorer**: Double-click folder traversal, path bar, file size indicators, and retro type badges (`[DIR]`, `[FILE]`).
+- **Drag-and-Drop Uploads**: Drag any files from your desktop directly onto the file table to immediately upload to the active remote peer.
+- **Visual Transfer Queue**: Monitor real-time progress bars, live transfer speed gauges (MB/s), and ETA counters.
+- **Device & Peer Manager**: Visual cards showing all configured and discovered peer nodes with connection tier badges (LAN, WAN, Relay).
 - **Access Control Policy Editor**: Toggle Read/Write permissions, configure path scopes, and edit security deny lists directly in the GUI.
 
 ---

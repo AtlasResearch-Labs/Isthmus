@@ -1,4 +1,4 @@
-// Isthmus Modern 2026 GUI Application Logic
+// Isthmus OLED Black Retro GUI Logic
 let currentDevice = 'local';
 let currentPath = '.';
 let allPeers = [];
@@ -6,7 +6,6 @@ let localNode = null;
 let activeTransfers = [];
 let transferPollInterval = null;
 
-// Initialize app on DOM ready
 window.addEventListener('DOMContentLoaded', () => {
   loadStatus();
   loadPeers();
@@ -16,14 +15,15 @@ window.addEventListener('DOMContentLoaded', () => {
 
 // Tab navigation
 function switchTab(tabId) {
-  document.querySelectorAll('.view-panel').forEach(el => el.classList.remove('active'));
-  document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.menu-item').forEach(el => el.classList.remove('active'));
   
-  const content = document.getElementById(`view-${tabId}`);
-  const navBtn = document.getElementById(`nav-${tabId}`);
+  const panel = document.getElementById(`tab-panel-${tabId}`);
+  const btn = document.getElementById(`tab-btn-${tabId}`);
   
-  if (content) content.classList.add('active');
-  if (navBtn) navBtn.classList.add('active');
+  if (panel) panel.classList.add('active');
+  if (btn) btn.classList.add('active');
 
   if (tabId === 'peers') loadPeers();
   if (tabId === 'transfers') renderTransfers();
@@ -37,22 +37,23 @@ async function loadStatus() {
     const data = await res.json();
     localNode = data;
 
+    document.getElementById('local-device-name').textContent = `${data.device_name} (Local)`;
+    document.getElementById('local-device-ip').textContent = `${data.virtual_ip || '10.77.0.1'} (Self)`;
     document.getElementById('sidebar-virtual-ip').textContent = data.virtual_ip || '10.77.0.1';
     document.getElementById('sidebar-sftp-port').textContent = data.sftp_port || '2222';
     document.getElementById('sidebar-tunnel-port').textContent = data.listen_port || '51820';
     document.getElementById('sidebar-coord-status').textContent = data.coord_server ? 'WAN Connected' : 'Direct LAN';
 
-    // Populate Security Tab
     document.getElementById('sec-device-name').value = data.device_name || '';
     document.getElementById('sec-device-id').value = data.device_id || '';
     document.getElementById('sec-public-key').value = data.public_key || '';
     document.getElementById('sec-shared-dir').value = data.shared_dir || '';
   } catch (err) {
-    appendLog(`[ERROR] Failed to load status: ${err.message}`);
+    appendLog(`[ERR] Failed to load status: ${err.message}`);
   }
 }
 
-// Fetch peers list
+// Fetch peers
 async function loadPeers() {
   try {
     const res = await fetch('/api/peers');
@@ -60,148 +61,115 @@ async function loadPeers() {
     const peers = await res.json();
     allPeers = peers || [];
 
-    const count = allPeers.length + 1;
-    document.getElementById('sidebar-device-count').textContent = `${count} Node${count > 1 ? 's' : ''}`;
-
     renderSidebarPeers(allPeers);
     renderPeersGrid(allPeers);
     populateACLSelect(allPeers);
   } catch (err) {
-    appendLog(`[ERROR] Failed to load peers: ${err.message}`);
+    appendLog(`[ERR] Failed to load peers: ${err.message}`);
   }
 }
 
-// Render Left Sidebar Device List
+// Render left sidebar
 function renderSidebarPeers(peers) {
   const container = document.getElementById('device-list');
   const localName = localNode ? localNode.device_name : 'This Machine';
   const localIP = localNode ? localNode.virtual_ip : '10.77.0.1';
 
   container.innerHTML = `
-    <div class="peer-card ${currentDevice === 'local' ? 'active' : ''}" onclick="selectDevice('local', '${localName}')">
-      <div class="peer-avatar">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+    <div class="device-card ${currentDevice === 'local' ? 'active' : ''}" onclick="selectDevice('local', '${localName}')">
+      <span class="device-icon">[PC]</span>
+      <div style="flex: 1; overflow: hidden;">
+        <div class="device-name">${escapeHTML(localName)} (Local)</div>
+        <div class="device-ip">${escapeHTML(localIP)} (Self)</div>
       </div>
-      <div class="peer-details">
-        <div class="peer-title-row">
-          <span class="peer-name">${escapeHTML(localName)}</span>
-          <span class="tier-badge tier-local">Local</span>
-        </div>
-        <div class="peer-ip">${escapeHTML(localIP)} (Self)</div>
-      </div>
+      <span class="badge badge-lan">LOCAL</span>
     </div>
   `;
 
   peers.forEach(peer => {
     const card = document.createElement('div');
-    card.className = `peer-card ${currentDevice === peer.device_id ? 'active' : ''}`;
+    card.className = `device-card ${currentDevice === peer.device_id ? 'active' : ''}`;
     card.onclick = () => selectDevice(peer.device_id, peer.device_name);
 
-    let tierClass = 'tier-lan';
-    let tierText = 'LAN';
+    let badgeClass = 'badge-lan';
+    let badgeText = 'LAN';
     if (peer.transport_tier === 2) {
-      tierClass = 'tier-wan';
-      tierText = 'WAN STUN';
+      badgeClass = 'badge-wan';
+      badgeText = 'WAN';
     } else if (peer.transport_tier === 3) {
-      tierClass = 'tier-relay';
-      tierText = 'RELAY';
+      badgeClass = 'badge-relay';
+      badgeText = 'RELAY';
     }
 
     card.innerHTML = `
-      <div class="peer-avatar" style="color: var(--accent-cyan);">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+      <span class="device-icon">[NODE]</span>
+      <div style="flex: 1; overflow: hidden;">
+        <div class="device-name">${escapeHTML(peer.device_name)}</div>
+        <div class="device-ip">${escapeHTML(peer.virtual_ip || peer.device_id.substring(0, 10))}</div>
       </div>
-      <div class="peer-details">
-        <div class="peer-title-row">
-          <span class="peer-name">${escapeHTML(peer.device_name)}</span>
-          <span class="tier-badge ${tierClass}">${tierText}</span>
-        </div>
-        <div class="peer-ip">${escapeHTML(peer.virtual_ip || peer.device_id.substring(0, 10))}</div>
-      </div>
+      <span class="badge ${badgeClass}">${badgeText}</span>
     `;
     container.appendChild(card);
   });
 }
 
-// Render Modern Peers Grid Tab
+// Render Peer Directory Grid
 function renderPeersGrid(peers) {
   const grid = document.getElementById('peers-grid');
   if (!grid) return;
 
   if (peers.length === 0) {
-    grid.innerHTML = `
-      <div style="grid-column: 1/-1; padding: 48px; text-align: center; color: var(--text-muted); background: var(--bg-card); border-radius: var(--radius-lg); border: 1px solid var(--border-card);">
-        <div style="margin-bottom: 12px; opacity: 0.6;">
-          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
-        </div>
-        <p style="font-weight: 500; font-size: 14px;">No remote nodes paired yet</p>
-        <p style="font-size: 12.5px; margin-top: 4px;">Click 'Pair New Device' to add an authorized peer.</p>
-      </div>
-    `;
+    grid.innerHTML = `<div style="grid-column: 1/-1; padding: 24px; color: var(--text-gray); font-family: var(--font-mono);">No peer nodes configured yet. Click '[+] Add New Peer' to pair a node.</div>`;
     return;
   }
 
   grid.innerHTML = '';
   peers.forEach(peer => {
     const card = document.createElement('div');
-    card.className = 'device-card-modern';
+    card.className = 'retro-card';
     card.innerHTML = `
-      <div class="card-header-row">
-        <div style="display: flex; align-items: center; gap: 10px;">
-          <div class="peer-avatar" style="color: var(--accent-cyan);">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
-          </div>
-          <div>
-            <div style="font-size: 14px; font-weight: 700; color: #ffffff;">${escapeHTML(peer.device_name)}</div>
-            <div style="font-size: 11.5px; font-family: var(--font-mono); color: var(--accent-cyan);">${escapeHTML(peer.virtual_ip || '10.77.0.x')}</div>
-          </div>
-        </div>
-        <span class="tier-badge tier-lan">Authorized</span>
+      <div class="card-header" style="display: flex; justify-content: space-between;">
+        <span>[PC] ${escapeHTML(peer.device_name)}</span>
+        <span style="color: var(--text-cyan);">${escapeHTML(peer.virtual_ip || '10.77.0.x')}</span>
       </div>
-
-      <div class="card-device-meta">
-        <div>Device ID: <span style="color: #ffffff;">${escapeHTML(peer.device_id)}</span></div>
-        <div>Public Key: <span style="color: var(--accent-cyan);">${escapeHTML(peer.public_key.substring(0, 28))}...</span></div>
-        <div>Transport: <span style="color: var(--accent-emerald);">Tier ${peer.transport_tier || 1} (Direct)</span></div>
+      <div style="font-family: var(--font-mono); font-size: 11px; color: var(--text-gray); display: flex; flex-direction: column; gap: 3px; margin: 6px 0;">
+        <div>ID: <span style="color: #fff;">${escapeHTML(peer.device_id)}</span></div>
+        <div>Public Key: <span style="color: var(--text-cyan);">${escapeHTML(peer.public_key.substring(0, 24))}...</span></div>
+        <div>Transport: <span style="color: var(--text-green);">Tier ${peer.transport_tier || 1}</span></div>
       </div>
-
-      <div style="display: flex; gap: 8px; margin-top: auto;">
-        <button class="btn btn-sm btn-primary" style="flex: 1;" onclick="selectDevice('${peer.device_id}', '${peer.device_name}'); switchTab('explorer');">
-          Browse Files
-        </button>
-        <button class="btn btn-sm" onclick="removePeer('${peer.device_id}')">
-          Remove
-        </button>
+      <div style="display: flex; gap: 6px; margin-top: 8px;">
+        <button class="retro-btn primary" onclick="selectDevice('${peer.device_id}', '${peer.device_name}'); switchTab('explorer');">Browse</button>
+        <button class="retro-btn" onclick="removePeer('${peer.device_id}')">Remove</button>
       </div>
     `;
     grid.appendChild(card);
   });
 }
 
-// Select Active Device to Browse
+// Select active device
 function selectDevice(deviceId, deviceName) {
   currentDevice = deviceId;
   currentPath = '.';
-  
-  const displayName = deviceName || (deviceId === 'local' ? 'This Machine' : deviceId);
+  document.getElementById('path-input').value = currentPath;
+
+  const displayName = deviceName || (deviceId === 'local' ? 'Local Host' : deviceId);
   document.getElementById('status-peer-name').textContent = displayName;
-  updateBreadcrumbs('.');
   
   renderSidebarPeers(allPeers);
   loadDirectory(deviceId, currentPath);
-  appendLog(`[NAV] Switched focus to '${displayName}'`);
+  appendLog(`[NAV] Switched device to '${displayName}'`);
 }
 
 // Load Directory
 async function loadDirectory(deviceId, path) {
   const tbody = document.getElementById('file-table-body');
-  tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; padding: 40px; color: var(--text-muted);">Fetching directory contents...</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; padding: 24px; color: var(--text-gray);">Reading directory '${escapeHTML(path)}'...</td></tr>`;
 
   try {
     const res = await fetch(`/api/browse?peer=${encodeURIComponent(deviceId)}&path=${encodeURIComponent(path)}`);
     if (!res.ok) {
       const errData = await res.json();
-      tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; padding: 40px; color: var(--accent-rose); font-weight: 500;">Failed to load folder: ${escapeHTML(errData.error || 'Access Denied')}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; padding: 24px; color: #ff5555;">[ERR] ${escapeHTML(errData.error || 'Access Denied')}</td></tr>`;
       return;
     }
 
@@ -210,60 +178,47 @@ async function loadDirectory(deviceId, path) {
     document.getElementById('status-items-count').textContent = `${data.entries ? data.entries.length : 0} items`;
     document.getElementById('status-transport-tier').textContent = data.tier || 'Direct Connection';
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; padding: 40px; color: var(--accent-rose);">Network error: ${escapeHTML(err.message)}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; padding: 24px; color: #ff5555;">[ERR] Connection error: ${escapeHTML(err.message)}</td></tr>`;
   }
 }
 
-// Render Modern File Table Rows
+// Render File Table Rows
 function renderFileTable(entries) {
   const tbody = document.getElementById('file-table-body');
   tbody.innerHTML = '';
 
   if (entries.length === 0) {
-    tbody.innerHTML = `
-      <tr>
-        <td colspan="4" style="text-align: center; padding: 56px 20px; color: var(--text-muted);">
-          <div style="margin-bottom: 10px; opacity: 0.5;">
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-          </div>
-          <div style="font-weight: 500;">This directory is empty</div>
-          <div style="font-size: 12px; margin-top: 4px;">Drag and drop files here to start uploading</div>
-        </td>
-      </tr>
-    `;
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; padding: 24px; color: var(--text-gray);">Folder is empty. Drag and drop files here to upload.</td></tr>`;
     return;
   }
 
-  // Parent dir entry if not root
+  // Parent directory entry
   if (currentPath !== '.' && currentPath !== '' && currentPath !== '/') {
     const row = document.createElement('tr');
+    row.className = 'file-row';
     row.ondblclick = () => navigateUp();
     row.innerHTML = `
-      <td>
-        <div class="file-name-cell">
-          <div class="file-icon-box icon-dir">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-          </div>
-          <span style="font-weight: 600;">.. (Parent Directory)</span>
-        </div>
-      </td>
+      <td class="type-dir">[DIR]</td>
+      <td><strong>.. (Parent Directory)</strong></td>
+      <td>&lt;DIR&gt;</td>
       <td>--</td>
-      <td>--</td>
-      <td style="text-align: right;">
-        <button class="btn btn-sm" onclick="navigateUp()">Up</button>
-      </td>
+      <td><button class="retro-btn" onclick="navigateUp()">Up [^]</button></td>
     `;
     tbody.appendChild(row);
   }
 
   entries.forEach(entry => {
     const row = document.createElement('tr');
+    row.className = 'file-row';
+
     const isDir = entry.is_dir;
-    const sizeStr = isDir ? '--' : formatBytes(entry.size);
-    const dateStr = entry.modified ? new Date(entry.modified).toLocaleDateString() + ' ' + new Date(entry.modified).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--';
+    const typeLabel = isDir ? '[DIR]' : '[FILE]';
+    const typeClass = isDir ? 'type-dir' : 'type-file';
+    const sizeStr = isDir ? '<DIR>' : formatBytes(entry.size);
+    const dateStr = entry.modified ? new Date(entry.modified).toLocaleDateString() + ' ' + new Date(entry.modified).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '--';
 
     row.onclick = () => {
-      document.querySelectorAll('.modern-table tbody tr').forEach(r => r.classList.remove('selected'));
+      document.querySelectorAll('.file-row').forEach(r => r.classList.remove('selected'));
       row.classList.add('selected');
     };
 
@@ -271,23 +226,15 @@ function renderFileTable(entries) {
       row.ondblclick = () => enterDirectory(entry.name);
     }
 
-    const iconSvg = isDir
-      ? `<div class="file-icon-box icon-dir"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></div>`
-      : `<div class="file-icon-box"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg></div>`;
-
     row.innerHTML = `
+      <td class="${typeClass}">${typeLabel}</td>
+      <td style="font-weight: ${isDir ? 'bold' : 'normal'};">${escapeHTML(entry.name)}</td>
+      <td>${sizeStr}</td>
+      <td>${dateStr}</td>
       <td>
-        <div class="file-name-cell">
-          ${iconSvg}
-          <span>${escapeHTML(entry.name)}</span>
-        </div>
-      </td>
-      <td style="font-family: var(--font-mono); font-size: 12px;">${sizeStr}</td>
-      <td style="font-size: 12px; color: var(--text-muted);">${dateStr}</td>
-      <td style="text-align: right;">
         ${isDir 
-          ? `<button class="btn btn-sm" onclick="enterDirectory('${escapeHTML(entry.name)}')">Open</button>`
-          : `<button class="btn btn-sm btn-primary" onclick="downloadFile('${escapeHTML(entry.name)}')">Download</button>`
+          ? `<button class="retro-btn" onclick="enterDirectory('${escapeHTML(entry.name)}')">Open</button>`
+          : `<button class="retro-btn primary" onclick="downloadFile('${escapeHTML(entry.name)}')">Download</button>`
         }
       </td>
     `;
@@ -295,37 +242,10 @@ function renderFileTable(entries) {
   });
 }
 
-// Navigation & Breadcrumbs
-function updateBreadcrumbs(path) {
-  const container = document.getElementById('breadcrumb-container');
-  const parts = path === '.' || path === '' ? [] : path.split('/').filter(p => p.length > 0);
-
-  let html = `<span class="crumb-item" onclick="navigateToPath('.')">SharedRoot</span>`;
-  let currentAccum = '';
-
-  parts.forEach((part, index) => {
-    currentAccum = currentAccum === '' ? part : `${currentAccum}/${part}`;
-    html += ` <span class="crumb-separator">/</span> `;
-    if (index === parts.length - 1) {
-      html += `<span class="crumb-active">${escapeHTML(part)}</span>`;
-    } else {
-      const target = currentAccum;
-      html += `<span class="crumb-item" onclick="navigateToPath('${escapeHTML(target)}')">${escapeHTML(part)}</span>`;
-    }
-  });
-
-  container.innerHTML = html;
-}
-
-function navigateToPath(targetPath) {
-  currentPath = targetPath;
-  updateBreadcrumbs(currentPath);
-  loadDirectory(currentDevice, currentPath);
-}
-
+// Navigation
 function enterDirectory(dirName) {
   currentPath = (currentPath === '.' || currentPath === '') ? dirName : `${currentPath}/${dirName}`;
-  updateBreadcrumbs(currentPath);
+  document.getElementById('path-input').value = currentPath;
   loadDirectory(currentDevice, currentPath);
 }
 
@@ -334,14 +254,23 @@ function navigateUp() {
   const parts = currentPath.split('/').filter(p => p.length > 0);
   parts.pop();
   currentPath = parts.length === 0 ? '.' : parts.join('/');
-  updateBreadcrumbs(currentPath);
+  document.getElementById('path-input').value = currentPath;
+  loadDirectory(currentDevice, currentPath);
+}
+
+function handlePathKey(e) {
+  if (e.key === 'Enter') navigateToInputPath();
+}
+
+function navigateToInputPath() {
+  currentPath = document.getElementById('path-input').value.trim() || '.';
   loadDirectory(currentDevice, currentPath);
 }
 
 function refreshCurrentView() {
   loadDirectory(currentDevice, currentPath);
   loadStatus();
-  appendLog(`[INFO] Refreshed directory view.`);
+  appendLog(`[R] Refreshed directory view.`);
 }
 
 // File Download
@@ -349,7 +278,7 @@ function downloadFile(fileName) {
   const filePath = currentPath === '.' ? fileName : `${currentPath}/${fileName}`;
   const url = `/api/download?peer=${encodeURIComponent(currentDevice)}&path=${encodeURIComponent(filePath)}`;
   
-  appendLog(`[DOWNLOAD] Fetching '${fileName}'...`);
+  appendLog(`[DL] Downloading '${fileName}'...`);
   const link = document.createElement('a');
   link.href = url;
   link.download = fileName;
@@ -358,7 +287,7 @@ function downloadFile(fileName) {
   document.body.removeChild(link);
 }
 
-// Drag & Drop Handlers
+// File Upload
 function triggerFileUpload() {
   document.getElementById('file-input-hidden').click();
 }
@@ -388,11 +317,10 @@ function handleDrop(e) {
   }
 }
 
-// Upload Files via FormData
 async function uploadFiles(files) {
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
-    appendLog(`[UPLOAD] Streaming '${file.name}' (${formatBytes(file.size)})...`);
+    appendLog(`[UL] Starting upload '${file.name}' (${formatBytes(file.size)})...`);
 
     const formData = new FormData();
     formData.append('file', file);
@@ -407,22 +335,22 @@ async function uploadFiles(files) {
 
       if (!res.ok) {
         const errData = await res.json();
-        appendLog(`[ERROR] Upload failed for '${file.name}': ${errData.error || 'Server error'}`);
+        appendLog(`[ERR] Upload failed for '${file.name}': ${errData.error || 'Server error'}`);
       } else {
-        appendLog(`[SUCCESS] Uploaded '${file.name}' successfully.`);
+        appendLog(`[OK] Uploaded '${file.name}' successfully.`);
       }
     } catch (err) {
-      appendLog(`[ERROR] Upload connection error: ${err.message}`);
+      appendLog(`[ERR] Upload network error: ${err.message}`);
     }
   }
 
   loadDirectory(currentDevice, currentPath);
 }
 
-// Trigger Delta Sync
+// Delta Sync
 async function triggerSync() {
   if (currentDevice === 'local') {
-    alert('Please select a remote mesh peer to synchronize with.');
+    alert('Please select a remote peer to synchronize with.');
     return;
   }
 
@@ -436,13 +364,13 @@ async function triggerSync() {
 
     const data = await res.json();
     if (!res.ok) {
-      appendLog(`[ERROR] Sync failed: ${data.error || 'Network error'}`);
+      appendLog(`[ERR] Sync failed: ${data.error || 'Error'}`);
     } else {
-      appendLog(`[SYNC COMPLETE] ${data.downloaded} files transferred, ${data.skipped} skipped.`);
+      appendLog(`[SYNC OK] ${data.downloaded} downloaded, ${data.skipped} skipped.`);
       loadDirectory(currentDevice, currentPath);
     }
   } catch (err) {
-    appendLog(`[ERROR] Sync error: ${err.message}`);
+    appendLog(`[ERR] Sync network error: ${err.message}`);
   }
 }
 
@@ -456,13 +384,12 @@ function startTransferPolling() {
       
       const badge = document.getElementById('transfers-badge');
       if (activeTransfers && activeTransfers.length > 0) {
-        badge.style.display = 'inline-block';
-        badge.textContent = activeTransfers.length;
+        badge.textContent = `(${activeTransfers.length})`;
       } else {
-        badge.style.display = 'none';
+        badge.textContent = '';
       }
 
-      if (document.getElementById('view-transfers').classList.contains('active')) {
+      if (document.getElementById('tab-panel-transfers').classList.contains('active')) {
         renderTransfers();
       }
     } catch (_) {}
@@ -474,30 +401,31 @@ function renderTransfers() {
   if (!container) return;
 
   if (!activeTransfers || activeTransfers.length === 0) {
-    container.innerHTML = `<div style="text-align: center; padding: 48px; color: var(--text-muted);">No active transfers in queue.</div>`;
+    container.innerHTML = `<div style="text-align: center; padding: 40px; color: var(--text-gray); font-family: var(--font-mono);">No active transfers in queue.</div>`;
     return;
   }
 
   container.innerHTML = '';
   activeTransfers.forEach(t => {
     const percent = t.total > 0 ? (t.transferred / t.total) * 100 : 0;
-    const card = document.createElement('div');
-    card.className = 'transfer-item-card';
-    card.innerHTML = `
-      <div style="display: flex; justify-content: space-between; align-items: center;">
-        <span style="font-weight: 600; color: #ffffff;">${escapeHTML(t.filename)}</span>
-        <span style="font-family: var(--font-mono); font-size: 12px; color: var(--accent-cyan);">${percent.toFixed(1)}%</span>
+    const box = document.createElement('div');
+    box.className = 'transfer-box';
+    box.innerHTML = `
+      <div style="display: flex; justify-content: space-between; font-weight: bold; font-size: 12px;">
+        <span>[${t.direction === 'upload' ? 'PUSH' : 'PULL'}] ${escapeHTML(t.filename)}</span>
+        <span style="color: var(--text-cyan); font-family: var(--font-mono);">${percent.toFixed(1)}%</span>
       </div>
-      <div class="transfer-progress-track">
-        <div class="transfer-progress-bar" style="width: ${percent}%;"></div>
+      <div class="progress-track">
+        <div class="progress-fill" style="width: ${percent}%;"></div>
+        <div class="progress-text">${formatBytes(t.transferred)} / ${formatBytes(t.total)}</div>
       </div>
-      <div style="display: flex; justify-content: space-between; font-size: 11.5px; font-family: var(--font-mono); color: var(--text-muted);">
-        <span>${formatBytes(t.transferred)} / ${formatBytes(t.total)}</span>
+      <div style="display: flex; justify-content: space-between; font-size: 11px; font-family: var(--font-mono); color: var(--text-gray);">
         <span>Speed: ${(t.speed / (1024 * 1024)).toFixed(2)} MB/s</span>
-        <span style="color: var(--accent-emerald); text-transform: uppercase;">${escapeHTML(t.status)}</span>
+        <span>Peer: ${escapeHTML(t.peer_name || t.peer)}</span>
+        <span style="color: var(--text-green); text-transform: uppercase;">${escapeHTML(t.status)}</span>
       </div>
     `;
-    container.appendChild(card);
+    container.appendChild(box);
   });
 }
 
@@ -508,6 +436,10 @@ function showAddPeerModal() {
 
 function showNewFolderModal() {
   document.getElementById('modal-new-folder').classList.add('active');
+}
+
+function showHelpModal() {
+  document.getElementById('modal-help').classList.add('active');
 }
 
 function closeModals() {
@@ -521,7 +453,7 @@ async function submitAddPeer() {
   const ip = document.getElementById('modal-peer-ip').value.trim();
 
   if (!id || !key) {
-    alert('Please enter both Device ID and Public Key.');
+    alert('Please enter Device ID and Public Key.');
     return;
   }
 
@@ -535,7 +467,7 @@ async function submitAddPeer() {
     if (res.ok) {
       closeModals();
       loadPeers();
-      appendLog(`[PEER] Paired new node '${name || id}' successfully.`);
+      appendLog(`[PEER OK] Paired '${name || id}' successfully.`);
     } else {
       const errData = await res.json();
       alert(`Failed to add peer: ${errData.error}`);
@@ -546,20 +478,20 @@ async function submitAddPeer() {
 }
 
 async function removePeer(deviceId) {
-  if (!confirm(`Are you sure you want to remove peer node ${deviceId}?`)) return;
+  if (!confirm(`Are you sure you want to remove peer ${deviceId}?`)) return;
 
   try {
     const res = await fetch(`/api/peers/delete?id=${encodeURIComponent(deviceId)}`, { method: 'POST' });
     if (res.ok) {
       loadPeers();
-      appendLog(`[PEER] Removed node '${deviceId}'.`);
+      appendLog(`[PEER RM] Removed '${deviceId}'.`);
     }
   } catch (err) {
-    appendLog(`[ERROR] Failed to remove peer: ${err.message}`);
+    appendLog(`[ERR] Failed to remove peer: ${err.message}`);
   }
 }
 
-// Security & ACL Management
+// Security & ACL
 function populateACLSelect(peers) {
   const select = document.getElementById('acl-peer-select');
   if (!select) return;
@@ -611,16 +543,15 @@ async function savePeerACL() {
     });
 
     if (res.ok) {
-      appendLog(`[SECURITY] Updated ACL policy for peer '${select.value}'.`);
-      alert('Security policy saved successfully.');
+      appendLog(`[SEC OK] Saved ACL policy for '${select.value}'.`);
+      alert('Security policy saved.');
       loadPeers();
     }
   } catch (err) {
-    appendLog(`[ERROR] Failed to save ACL: ${err.message}`);
+    appendLog(`[ERR] Failed to save ACL: ${err.message}`);
   }
 }
 
-// Utility Functions
 function appendLog(msg) {
   const consoleEl = document.getElementById('console-logs');
   if (!consoleEl) return;

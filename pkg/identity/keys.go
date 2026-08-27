@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 
-	"golang.org/x/crypto/curve25519"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -61,18 +60,9 @@ func GenerateKeyPair() (*KeyPair, error) {
 		return nil, fmt.Errorf("failed to generate random bytes: %w", err)
 	}
 
-	// Clamp the private key according to Curve25519 specification
-	priv[0] &= 248
-	priv[31] &= 127
-	priv[31] |= 64
-
-	pubBytes, err := curve25519.X25519(priv[:], curve25519.Basepoint)
-	if err != nil {
-		return nil, fmt.Errorf("failed to derive public key: %w", err)
-	}
-
+	edPriv := ed25519.NewKeyFromSeed(priv[:])
 	var pub Key
-	copy(pub[:], pubBytes)
+	copy(pub[:], edPriv[32:])
 
 	sshPubStr, _ := SSHAuthorizedKeyFromSeed(priv)
 

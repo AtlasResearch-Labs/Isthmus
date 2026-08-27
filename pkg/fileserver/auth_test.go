@@ -28,11 +28,11 @@ func TestPublicKeyAuthentication(t *testing.T) {
 		t.Fatalf("failed to generate rogue keypair: %v", err)
 	}
 
-	// Start Server configured strictly with clientKP.SSHPublicKey
+	// Start Server configured strictly with clientKP.PublicKey.String()
 	server, err := NewServer(ServerConfig{
 		Port:        0,
 		RootDir:     filepath.Join(tempDir, "shared"),
-		AllowedKeys: []string{clientKP.SSHPublicKey},
+		AllowedKeys: []string{clientKP.PublicKey.String()},
 	})
 	if err != nil {
 		t.Fatalf("failed to create server: %v", err)

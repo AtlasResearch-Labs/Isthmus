@@ -18,11 +18,12 @@ A cross-device secure tunnel and file access system designed to connect machines
 4. [Step-by-Step Tutorials](#4-step-by-step-tutorials)
    - [Tutorial 1: Zero-Config LAN File Transfers](#tutorial-1-zero-config-lan-file-transfers)
    - [Tutorial 2: Connecting Devices Across the Internet (WAN)](#tutorial-2-connecting-devices-across-the-internet-wan)
-   - [Tutorial 3: Using the Retro Windows Interactive TUI](#tutorial-3-using-the-retro-windows-interactive-tui)
-   - [Tutorial 4: Recursive Directory Delta Sync](#tutorial-4-recursive-directory-delta-sync)
-   - [Tutorial 5: Bandwidth Throttling](#tutorial-5-bandwidth-throttling)
-   - [Tutorial 6: Configuring Path Access Control Lists (ACLs)](#tutorial-6-configuring-path-access-control-lists-acls)
-   - [Tutorial 7: Running as a Headless Background Service](#tutorial-7-running-as-a-headless-background-service)
+   - [Tutorial 3: Using the Dedicated Retro Windows Desktop GUI](#tutorial-3-using-the-dedicated-retro-windows-desktop-gui)
+   - [Tutorial 4: Using the Retro Windows Interactive TUI](#tutorial-4-using-the-retro-windows-interactive-tui)
+   - [Tutorial 5: Recursive Directory Delta Sync](#tutorial-5-recursive-directory-delta-sync)
+   - [Tutorial 6: Bandwidth Throttling](#tutorial-6-bandwidth-throttling)
+   - [Tutorial 7: Configuring Path Access Control Lists (ACLs)](#tutorial-7-configuring-path-access-control-lists-acls)
+   - [Tutorial 8: Running as a Headless Background Service](#tutorial-8-running-as-a-headless-background-service)
 5. [Complete CLI Command Reference](#5-complete-cli-command-reference)
 6. [Coordination Server Deployment Guide](#6-coordination-server-deployment-guide)
 7. [Security & Cryptographic Architecture](#7-security--cryptographic-architecture)
@@ -254,7 +255,29 @@ Isthmus will automatically resolve PC1 over Tier 2 (WAN Direct via STUN) or fall
 
 ---
 
-### Tutorial 3: Using the Retro Windows Interactive TUI
+### Tutorial 3: Using the Dedicated Retro Windows Desktop GUI
+
+Isthmus provides a standalone graphical desktop interface (`isthmus gui` or `isthmus app`) with an authentic Retro Windows OLED Black aesthetic.
+
+#### Launching the GUI:
+```bash
+# Launch GUI and automatically open default desktop browser
+isthmus gui
+
+# Or with custom port
+isthmus gui --port 7788
+```
+
+#### Graphical Desktop Features:
+- **Interactive File Explorer**: Double-click folders to navigate, click breadcrumb paths, view file size and modified dates.
+- **Drag-and-Drop Uploads**: Drag any files from your desktop directly onto the file table to immediately upload to the active remote peer.
+- **Visual Transfer Queue**: Monitor real-time progress bars, live transfer speed gauges (MB/s), and ETA counters.
+- **Device & Peer Manager**: Visual cards showing all configured and discovered peer nodes with connection tier badges (LAN, WAN, Relay).
+- **Access Control Policy Editor**: Toggle Read/Write permissions, configure path scopes, and edit security deny lists directly in the GUI.
+
+---
+
+### Tutorial 4: Using the Retro Windows Interactive TUI
 
 Isthmus features a keyboard-driven Terminal User Interface built on true OLED black (`#000000`).
 
@@ -407,6 +430,7 @@ isthmus service status
 | `discover` | `isthmus discover [--timeout <dur>]` | Scans local subnet on UDP 7755 for active Isthmus nodes. |
 | `serve` | `isthmus serve [--port <p>] [--root <dir>]` | Runs interactive foreground file server and LAN beacon. |
 | `daemon` | `isthmus daemon` | Runs continuous background agent with LAN beacons, WAN heartbeat, and tailnet sync. |
+| `gui` / `app` | `isthmus gui [--port <p>] [--no-open]` | Launches the dedicated Retro Windows OLED Black Desktop GUI. |
 | `ui` / `tui` | `isthmus ui <peer> [path]` | Launches the Retro Windows OLED Black interactive TUI file browser. |
 | `browse` | `isthmus browse <peer> [remote-path]` | Lists remote files on a peer in a retro Windows table format. |
 | `pull` | `isthmus pull [--limit-rate <r>] <peer> <remote> [local]` | Downloads file with progress bar and SHA-256 verification. |

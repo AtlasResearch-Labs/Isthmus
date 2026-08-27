@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -16,6 +18,7 @@ import (
 	"isthmus/pkg/coord"
 	"isthmus/pkg/discovery"
 	"isthmus/pkg/fileserver"
+	"isthmus/pkg/gui"
 	"isthmus/pkg/mesh"
 	"isthmus/pkg/service"
 	"isthmus/pkg/tui"
@@ -37,6 +40,7 @@ func printUsage() {
 	fmt.Println("  serve                 Start local file server and LAN beacon")
 	fmt.Println("  daemon                Run persistent background node service with WAN sync")
 	fmt.Println("  ui <peer> [path]      Open Retro Windows interactive TUI file explorer")
+	fmt.Println("  gui, app              Launch dedicated Retro Windows Desktop GUI")
 	fmt.Println("  browse <peer> [path]  Browse remote files on a peer (table format)")
 	fmt.Println("  pull <peer> <remote>  Pull a file from a peer (LAN, WAN Direct, or Relay)")
 	fmt.Println("  push <peer> <local>   Push a file to a peer")
@@ -72,6 +76,8 @@ func main() {
 		cmdDaemon(os.Args[2:])
 	case "ui", "tui":
 		cmdUI(os.Args[2:])
+	case "gui", "app":
+		cmdGUI(os.Args[2:])
 	case "browse":
 		cmdBrowse(os.Args[2:])
 	case "pull":
@@ -870,3 +876,48 @@ func cmdPeer(args []string) {
 		logger.Info("Removed peer %s", args[1])
 	}
 }
+
+func cmdGUI(args []string) {
+	fs := flag.NewFlagSet("gui", flag.ExitOnError)
+	port := fs.Int("port", 7788, "HTTP port for GUI web server")
+	noOpen := fs.Bool("no-open", false, "Do not automatically open the web browser")
+	fs.Parse(args)
+
+	cfg, err := config.LoadConfig("")
+	if err != nil {
+		logger.Error("Please run 'isthmus init' first: %v", err)
+		os.Exit(1)
+	}
+
+	guiServer := gui.NewServer(cfg)
+	url := fmt.Sprintf("http://127.0.0.1:%d", *port)
+
+	if !*noOpen {
+		go func() {
+			time.Sleep(300 * time.Millisecond)
+			openBrowser(url)
+		}()
+	}
+
+	logger.Info("Starting Isthmus Desktop GUI on %s", url)
+	logger.Info("Press Ctrl+C to stop the GUI server.")
+
+	if err := guiServer.Start(*port); err != nil {
+		logger.Error("GUI server error: %v", err)
+		os.Exit(1)
+	}
+}
+
+func openBrowser(url string) {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "windows":
+		cmd = exec.Command("cmd", "/c", "start", url)
+	case "darwin":
+		cmd = exec.Command("open", url)
+	default:
+		cmd = exec.Command("xdg-open", url)
+	}
+	_ = cmd.Start()
+}
+

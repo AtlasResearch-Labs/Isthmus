@@ -200,6 +200,7 @@ func (s *Server) handleBrowse(w http.ResponseWriter, r *http.Request) {
 	// 1. Local browsing
 	if peer == "local" || peer == "" {
 		absPath := filepath.Join(s.cfg.SharedDir, filepath.FromSlash(path))
+		_ = os.MkdirAll(absPath, 0755)
 		entries, err := os.ReadDir(absPath)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)

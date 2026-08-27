@@ -322,6 +322,17 @@ func (c *Client) PushFile(localPath, remotePath string, onProgress ProgressCallb
 	return nil
 }
 
+func (c *Client) Remove(path string) error {
+	if c.sftpClient == nil {
+		return fmt.Errorf("sftp client not connected")
+	}
+	return c.sftpClient.Remove(path)
+}
+
+func (c *Client) SFTPClient() *sftp.Client {
+	return c.sftpClient
+}
+
 func (c *Client) Close() error {
 	if c.sftpClient != nil {
 		c.sftpClient.Close()

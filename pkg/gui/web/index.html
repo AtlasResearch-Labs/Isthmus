@@ -58,7 +58,7 @@
       <aside class="sidebar">
         <div class="sidebar-header">
           <span class="sidebar-title">Mesh Network</span>
-          <span style="font-size: 11px; font-family: var(--font-mono); color: var(--text-muted);" id="sidebar-device-count">1 Node</span>
+          <span style="font-size: 11px; font-family: var(--font-mono); color: var(--text-muted);" id="sidebar-device-count">--</span>
         </div>
         <div class="peer-list" id="device-list">
           <!-- Rendered via JS -->
@@ -66,19 +66,19 @@
         <div class="sidebar-footer">
           <div class="footer-stat">
             <span>Coordination:</span>
-            <span style="color: #ffffff;" id="sidebar-coord-status">Direct LAN</span>
+            <span style="color: #ffffff;" id="sidebar-coord-status">--</span>
           </div>
           <div class="footer-stat">
             <span>Tunnel Port:</span>
-            <span style="color: var(--blue-text);" id="sidebar-tunnel-port">51820</span>
+            <span style="color: var(--blue-text);" id="sidebar-tunnel-port">--</span>
           </div>
           <div class="footer-stat">
             <span>SFTP Port:</span>
-            <span style="color: var(--blue-text);" id="sidebar-sftp-port">2222</span>
+            <span style="color: var(--blue-text);" id="sidebar-sftp-port">--</span>
           </div>
           <div class="footer-stat">
             <span>Virtual IP:</span>
-            <span style="color: #ffffff;" id="sidebar-virtual-ip">10.77.0.1</span>
+            <span style="color: #ffffff;" id="sidebar-virtual-ip">--</span>
           </div>
         </div>
       </aside>
@@ -90,7 +90,7 @@
           <div class="breadcrumb-box" id="breadcrumb-container">
             <span class="crumb-btn" onclick="navigateToPath('.')">SharedRoot</span>
             <span class="crumb-sep">/</span>
-            <span class="crumb-current">root</span>
+            <span class="crumb-current">.</span>
           </div>
 
           <div class="tool-actions">
@@ -166,7 +166,7 @@
         <div class="tab-content" id="tab-transfers">
           <div class="transfers-wrap" id="transfers-list">
             <div style="text-align: center; padding: 40px; color: var(--text-muted);">
-              No active transfers.
+              No active transfers in queue.
             </div>
           </div>
         </div>
@@ -181,19 +181,19 @@
               </div>
               <div class="form-field">
                 <label class="field-label">Device Name</label>
-                <input type="text" class="input-flat" id="sec-device-name" readonly>
+                <input type="text" class="input-flat" id="sec-device-name" readonly placeholder="Loading...">
               </div>
               <div class="form-field">
                 <label class="field-label">Device ID (SHA256)</label>
-                <input type="text" class="input-flat input-mono" id="sec-device-id" readonly>
+                <input type="text" class="input-flat input-mono" id="sec-device-id" readonly placeholder="Loading...">
               </div>
               <div class="form-field">
                 <label class="field-label">Public Key (Ed25519)</label>
-                <input type="text" class="input-flat input-mono" id="sec-public-key" readonly>
+                <input type="text" class="input-flat input-mono" id="sec-public-key" readonly placeholder="Loading...">
               </div>
               <div class="form-field">
                 <label class="field-label">Shared Root Folder</label>
-                <input type="text" class="input-flat input-mono" id="sec-shared-dir" readonly>
+                <input type="text" class="input-flat input-mono" id="sec-shared-dir" readonly placeholder="Loading...">
               </div>
             </div>
 
@@ -222,7 +222,7 @@
               </div>
               <div class="form-field">
                 <label class="field-label">Security Deny List (Blocked Paths)</label>
-                <input type="text" class="input-flat input-mono" id="acl-blocked-paths" value=".ssh, .env, .git, credentials">
+                <input type="text" class="input-flat input-mono" id="acl-blocked-paths" placeholder="e.g. .ssh, .env, .git">
               </div>
               <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
                 <button class="btn btn-sm btn-primary" onclick="savePeerACL()">Save Policy</button>
@@ -234,8 +234,7 @@
         <!-- 5. Logs Tab -->
         <div class="tab-content" id="tab-logs">
           <div style="flex: 1; background: #000000; padding: 14px; font-family: var(--font-mono); font-size: 11.5px; overflow-y: auto; color: var(--text-secondary); line-height: 1.5;" id="console-logs">
-            [SYS] Isthmus GUI Control Daemon Active.<br>
-            [SYS] Connected to local node.<br>
+            Connecting to live daemon logs...
           </div>
         </div>
       </main>
@@ -244,9 +243,9 @@
     <!-- Footer -->
     <footer class="app-footer">
       <div style="display: flex; gap: 12px;">
-        <span>Active Node: <strong id="status-peer-name" style="color: #ffffff;">This Machine</strong></span>
+        <span>Active Node: <strong id="status-peer-name" style="color: #ffffff;">Loading...</strong></span>
         <span>&bull;</span>
-        <span>Transport: <strong id="status-transport-tier" style="color: var(--blue-text);">Direct Loopback</strong></span>
+        <span>Transport: <strong id="status-transport-tier" style="color: var(--blue-text);">--</strong></span>
       </div>
       <div>
         <span id="status-items-count">0 items</span>

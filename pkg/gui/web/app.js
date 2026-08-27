@@ -10,6 +10,7 @@ window.addEventListener('DOMContentLoaded', () => {
   loadStatus();
   loadPeers();
   loadDirectory('local', '.');
+  loadLogs();
   startTransferPolling();
 });
 
@@ -26,6 +27,7 @@ function switchTab(tabId) {
 
   if (tabId === 'peers') loadPeers();
   if (tabId === 'transfers') renderTransfers();
+  if (tabId === 'logs') loadLogs();
 }
 
 // Fetch local node status
@@ -484,6 +486,63 @@ function showNewFolderModal() {
   document.getElementById('modal-new-folder').classList.add('active');
 }
 
+async function submitNewFolder() {
+  const folderName = document.getElementById('modal-folder-name').value.trim();
+  if (!folderName) {
+    alert('Please enter a folder name.');
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/mkdir', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        peer: currentDevice,
+        current_dir: currentPath,
+        folder_name: folderName,
+      }),
+    });
+
+    if (res.ok) {
+      closeModals();
+      document.getElementById('modal-folder-name').value = '';
+      loadDirectory(currentDevice, currentPath);
+      appendLog(`[OK] Created folder '${folderName}'.`);
+    } else {
+      const errData = await res.json();
+      alert(`Failed to create folder: ${errData.error}`);
+    }
+  } catch (err) {
+    alert(`Error: ${err.message}`);
+  }
+}
+
+async function deleteItem(itemPath) {
+  if (!confirm(`Are you sure you want to delete '${itemPath}'?`)) return;
+
+  try {
+    const res = await fetch('/api/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        peer: currentDevice,
+        path: itemPath,
+      }),
+    });
+
+    if (res.ok) {
+      loadDirectory(currentDevice, currentPath);
+      appendLog(`[OK] Deleted '${itemPath}'.`);
+    } else {
+      const errData = await res.json();
+      alert(`Failed to delete: ${errData.error}`);
+    }
+  } catch (err) {
+    alert(`Error: ${err.message}`);
+  }
+}
+
 function closeModals() {
   document.querySelectorAll('.modal-overlay').forEach(el => el.classList.remove('active'));
 }
@@ -592,6 +651,19 @@ async function savePeerACL() {
   } catch (err) {
     appendLog(`[ERR] Failed to save ACL: ${err.message}`);
   }
+}
+
+async function loadLogs() {
+  try {
+    const res = await fetch('/api/logs');
+    if (!res.ok) return;
+    const logs = await res.json();
+    const consoleEl = document.getElementById('console-logs');
+    if (consoleEl && Array.isArray(logs) && logs.length > 0) {
+      consoleEl.innerHTML = logs.map(l => escapeHTML(l)).join('<br>') + '<br>';
+      consoleEl.scrollTop = consoleEl.scrollHeight;
+    }
+  } catch (_) {}
 }
 
 function appendLog(msg) {

@@ -56,6 +56,29 @@ func SetOutput(w io.Writer) {
 	defaultLogger.out = w
 }
 
+var (
+	recentLogs   []string
+	recentLogsMu sync.RWMutex
+	maxLogs      = 200
+)
+
+func AddLogHook(entry string) {
+	recentLogsMu.Lock()
+	defer recentLogsMu.Unlock()
+	recentLogs = append(recentLogs, entry)
+	if len(recentLogs) > maxLogs {
+		recentLogs = recentLogs[len(recentLogs)-maxLogs:]
+	}
+}
+
+func GetRecentLogs() []string {
+	recentLogsMu.RLock()
+	defer recentLogsMu.RUnlock()
+	res := make([]string, len(recentLogs))
+	copy(res, recentLogs)
+	return res
+}
+
 func (l *Logger) log(level Level, format string, args ...interface{}) {
 	if level < l.level {
 		return
@@ -65,11 +88,14 @@ func (l *Logger) log(level Level, format string, args ...interface{}) {
 
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
 	msg := fmt.Sprintf(format, args...)
+	var entry string
 	if l.prefix != "" {
-		fmt.Fprintf(l.out, "[%s] [%s] [%s] %s\n", timestamp, level.String(), l.prefix, msg)
+		entry = fmt.Sprintf("[%s] [%s] [%s] %s", timestamp, level.String(), l.prefix, msg)
 	} else {
-		fmt.Fprintf(l.out, "[%s] [%s] %s\n", timestamp, level.String(), msg)
+		entry = fmt.Sprintf("[%s] [%s] %s", timestamp, level.String(), msg)
 	}
+	fmt.Fprintln(l.out, entry)
+	AddLogHook(entry)
 }
 
 func Debug(format string, args ...interface{}) {

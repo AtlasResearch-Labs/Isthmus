@@ -86,6 +86,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/sync", s.handleSync)
 	mux.HandleFunc("/api/transfers", s.handleTransfers)
 	mux.HandleFunc("/api/acl", s.handleACL)
+	mux.HandleFunc("/api/logs", s.handleLogs)
+	mux.HandleFunc("/api/mkdir", s.handleMkdir)
+	mux.HandleFunc("/api/delete", s.handleDelete)
 
 	return mux
 }
@@ -588,4 +591,142 @@ func (s *Server) setTransfer(t *TransferRecord) {
 	s.transMu.Lock()
 	defer s.transMu.Unlock()
 	s.transfers[t.ID] = t
+}
+
+func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	logs := logger.GetRecentLogs()
+	_ = json.NewEncoder(w).Encode(logs)
+}
+
+func (s *Server) handleMkdir(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		Peer       string `json:"peer"`
+		CurrentDir string `json:"current_dir"`
+		FolderName string `json:"folder_name"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid payload", http.StatusBadRequest)
+		return
+	}
+
+	if req.FolderName == "" {
+		http.Error(w, "Folder name is required", http.StatusBadRequest)
+		return
+	}
+
+	targetPath := req.FolderName
+	if req.CurrentDir != "." && req.CurrentDir != "" && req.CurrentDir != "/" {
+		targetPath = req.CurrentDir + "/" + req.FolderName
+	}
+
+	if req.Peer == "local" || req.Peer == "" {
+		absPath := filepath.Join(s.cfg.SharedDir, filepath.FromSlash(targetPath))
+		if err := os.MkdirAll(absPath, 0755); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"status":"ok"}`))
+		return
+	}
+
+	// Remote peer mkdir
+	router := discovery.NewAutoRouter(s.cfg)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	routed, err := router.DialPeer(ctx, req.Peer)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer routed.Conn.Close()
+
+	client, err := fileserver.NewClientFromConn(routed.Conn, fileserver.ClientConfig{
+		Endpoint:   routed.Addr,
+		PrivateKey: s.cfg.PrivateKey,
+	})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer client.Close()
+
+	if err := client.MkdirAll(targetPath); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{"status":"ok"}`))
+}
+
+func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		Peer string `json:"peer"`
+		Path string `json:"path"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid payload", http.StatusBadRequest)
+		return
+	}
+
+	if req.Path == "" || req.Path == "." || req.Path == "/" {
+		http.Error(w, "Invalid path", http.StatusBadRequest)
+		return
+	}
+
+	if req.Peer == "local" || req.Peer == "" {
+		absPath := filepath.Join(s.cfg.SharedDir, filepath.FromSlash(req.Path))
+		if err := os.RemoveAll(absPath); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"status":"ok"}`))
+		return
+	}
+
+	// Remote peer remove
+	router := discovery.NewAutoRouter(s.cfg)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	routed, err := router.DialPeer(ctx, req.Peer)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer routed.Conn.Close()
+
+	client, err := fileserver.NewClientFromConn(routed.Conn, fileserver.ClientConfig{
+		Endpoint:   routed.Addr,
+		PrivateKey: s.cfg.PrivateKey,
+	})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer client.Close()
+
+	if err := client.Remove(req.Path); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{"status":"ok"}`))
 }

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -117,13 +118,26 @@ func (s *Server) handlePeers(w http.ResponseWriter, r *http.Request) {
 	var list []PeerJSON
 
 	for _, peer := range s.cfg.Peers {
+		tier := 1
+		if peer.LastSeenEndpoint != "" {
+			host, _, err := net.SplitHostPort(peer.LastSeenEndpoint)
+			if err == nil {
+				ip := net.ParseIP(host)
+				if ip != nil && !ip.IsPrivate() && !ip.IsLoopback() {
+					tier = 2
+				}
+			}
+		} else if s.cfg.CoordServer != "" {
+			tier = 2
+		}
+
 		list = append(list, PeerJSON{
 			DeviceID:      peer.DeviceID,
 			DeviceName:    peer.DeviceName,
 			PublicKey:     peer.PublicKey,
 			VirtualIP:     peer.VirtualIP,
 			Allowed:       peer.Allowed,
-			TransportTier: 1,
+			TransportTier: tier,
 			ACL:           &peer.ACL,
 		})
 	}

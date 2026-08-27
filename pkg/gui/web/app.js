@@ -38,9 +38,9 @@ async function loadStatus() {
     const data = await res.json();
     localNode = data;
 
-    document.getElementById('sidebar-virtual-ip').textContent = data.virtual_ip || '10.77.0.1';
-    document.getElementById('sidebar-sftp-port').textContent = data.sftp_port || '2222';
-    document.getElementById('sidebar-tunnel-port').textContent = data.listen_port || '51820';
+    document.getElementById('sidebar-virtual-ip').textContent = data.virtual_ip || '--';
+    document.getElementById('sidebar-sftp-port').textContent = data.sftp_port || '--';
+    document.getElementById('sidebar-tunnel-port').textContent = data.listen_port || '--';
     document.getElementById('sidebar-coord-status').textContent = data.coord_server ? 'WAN Connected' : 'Direct LAN';
 
     document.getElementById('sec-device-name').value = data.device_name || '';
@@ -261,11 +261,12 @@ function renderFileTable(entries) {
       </td>
       <td style="font-family: var(--font-mono); font-size: 11.5px;">${sizeStr}</td>
       <td style="font-size: 11.5px; color: var(--text-muted);">${dateStr}</td>
-      <td style="text-align: right;">
+      <td style="text-align: right; display: flex; gap: 4px; justify-content: flex-end;">
         ${isDir 
           ? `<button class="btn btn-sm" onclick="enterDirectory('${escapeHTML(entry.name)}')">Open</button>`
           : `<button class="btn btn-sm btn-primary" onclick="downloadFile('${escapeHTML(entry.name)}')">Download</button>`
         }
+        <button class="btn btn-sm" onclick="deleteItem('${escapeHTML(currentPath === '.' ? entry.name : currentPath + '/' + entry.name)}')">Delete</button>
       </td>
     `;
     tbody.appendChild(row);

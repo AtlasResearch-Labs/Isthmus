@@ -1,0 +1,189 @@
+name: Release & Build All Apps
+
+on:
+  push:
+    tags:
+      - 'v*'
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-binaries:
+    name: Build Multi-Arch Binaries & Linux Packages
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: true
+
+      - name: Compile All Platform Binaries
+        run: |
+          mkdir -p dist/binaries dist/deb_amd64 dist/deb_arm64 dist/windows
+          VERSION=${GITHUB_REF_NAME:-v0.5.0}
+
+          # 1. Windows x64 & ARM64
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "-s -w -X main.version=$VERSION" -o dist/binaries/isthmus-windows-amd64.exe cmd/isthmus/main.go
+          CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build -ldflags "-s -w -X main.version=$VERSION" -o dist/binaries/isthmus-windows-arm64.exe cmd/isthmus/main.go
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "-s -w -X main.version=$VERSION" -o dist/binaries/isthmus-coord-windows-amd64.exe cmd/isthmus-coord/main.go
+
+          # 2. Linux amd64, arm64, armv7
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-s -w -X main.version=$VERSION" -o dist/binaries/isthmus-linux-amd64 cmd/isthmus/main.go
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "-s -w -X main.version=$VERSION" -o dist/binaries/isthmus-linux-arm64 cmd/isthmus/main.go
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -ldflags "-s -w -X main.version=$VERSION" -o dist/binaries/isthmus-linux-armv7 cmd/isthmus/main.go
+
+          # 3. macOS Apple Silicon & Intel
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags "-s -w -X main.version=$VERSION" -o dist/binaries/isthmus-darwin-arm64 cmd/isthmus/main.go
+          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags "-s -w -X main.version=$VERSION" -o dist/binaries/isthmus-darwin-amd64 cmd/isthmus/main.go
+
+      - name: Build Debian (.deb) Packages
+        run: |
+          VERSION="0.5.0"
+          for ARCH in amd64 arm64; do
+            PKG_DIR="dist/isthmus_${VERSION}_${ARCH}"
+            mkdir -p "${PKG_DIR}/DEBIAN"
+            mkdir -p "${PKG_DIR}/usr/bin"
+            mkdir -p "${PKG_DIR}/lib/systemd/system"
+            mkdir -p "${PKG_DIR}/usr/share/doc/isthmus"
+
+            cp "dist/binaries/isthmus-linux-${ARCH}" "${PKG_DIR}/usr/bin/isthmus"
+            chmod 755 "${PKG_DIR}/usr/bin/isthmus"
+            cp scripts/isthmus.service "${PKG_DIR}/lib/systemd/system/isthmus.service"
+            cp README.md "${PKG_DIR}/usr/share/doc/isthmus/README.md"
+            cp LICENSE "${PKG_DIR}/usr/share/doc/isthmus/copyright"
+
+            cat <<EOF > "${PKG_DIR}/DEBIAN/control"
+          Package: isthmus
+          Version: ${VERSION}
+          Section: utils
+          Priority: optional
+          Architecture: ${ARCH}
+          Maintainer: Isthmus Team <dev@isthmus.mesh>
+          Description: Cross-Device Secure Tunnel and Distributed File Mesh
+           Isthmus connects computers, cloud servers, and mobile devices seamlessly
+           across LAN and WAN networks with zero cloud dependencies.
+          EOF
+
+            cat <<EOF > "${PKG_DIR}/DEBIAN/postinst"
+          #!/bin/sh
+          set -e
+          chmod 755 /usr/bin/isthmus
+          if [ -d /run/systemd/system ]; then
+              systemctl daemon-reload || true
+          fi
+          exit 0
+          EOF
+            chmod 755 "${PKG_DIR}/DEBIAN/postinst"
+
+            dpkg-deb --build "${PKG_DIR}" "dist/isthmus_${VERSION}_${ARCH}.deb"
+          done
+
+      - name: Package Windows ZIP Bundle
+        run: |
+          mkdir -p dist/windows_bundle/bin
+          cp dist/binaries/isthmus-windows-amd64.exe dist/windows_bundle/bin/isthmus.exe
+          cp dist/binaries/isthmus-coord-windows-amd64.exe dist/windows_bundle/bin/isthmus-coord.exe
+          cp scripts/install_windows.ps1 dist/windows_bundle/install.ps1
+          cp README.md dist/windows_bundle/README.md
+          cp docs/USER_MANUAL.md dist/windows_bundle/USER_MANUAL.md
+          cd dist/windows_bundle && zip -r ../isthmus-windows-x64-setup.zip . && cd ../..
+
+      - name: Upload Binary Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-packages
+          path: |
+            dist/*.deb
+            dist/*.zip
+            dist/binaries/*
+
+  build-android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+
+      - name: Setup Java JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Build Android APK with Gradle
+        run: |
+          cd android
+          gradle assembleDebug --no-daemon
+          cp app/build/outputs/apk/debug/app-debug.apk ../dist/isthmus-android-v0.5.0.apk || cp app/build/outputs/apk/*/*/*.apk ../dist/isthmus-android-v0.5.0.apk || true
+
+      - name: Upload Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: dist/isthmus-android-v0.5.0.apk
+
+  publish-release:
+    name: Create GitHub Release & Publish Apps
+    needs: [build-binaries, build-android]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+
+      - name: Download Desktop Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: desktop-packages
+          path: release_assets
+
+      - name: Download Android APK
+        uses: actions/download-artifact@v4
+        with:
+          name: android-apk
+          path: release_assets
+        continue-on-error: true
+
+      - name: Create or Update GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        with:
+          tag_name: ${{ github.ref_name || 'v0.5.0' }}
+          name: "Isthmus Cross-Device Mesh v0.5.0"
+          body: |
+            ## 🚀 Isthmus v0.5.0 Official Release
+
+            Download and install Isthmus on all your devices:
+
+            ### 📱 Mobile Apps
+            * **Android APK**: [`isthmus-android-v0.5.0.apk`](isthmus-android-v0.5.0.apk)
+
+            ### 💻 Desktop Applications
+            * **Windows 64-bit Installer**: [`isthmus-windows-x64-setup.zip`](isthmus-windows-x64-setup.zip)
+            * **Linux Debian / Ubuntu (x86_64)**: [`isthmus_0.5.0_amd64.deb`](isthmus_0.5.0_amd64.deb)
+            * **Linux Debian / Ubuntu (ARM64 / Raspberry Pi)**: [`isthmus_0.5.0_arm64.deb`](isthmus_0.5.0_arm64.deb)
+
+            ### 🛠️ Standalone Binaries
+            * **macOS Apple Silicon (M1/M2/M3/M4)**: `isthmus-darwin-arm64`
+            * **macOS Intel**: `isthmus-darwin-amd64`
+            * **Linux x64**: `isthmus-linux-amd64`
+            * **Windows x64**: `isthmus-windows-amd64.exe`
+
+            ---
+            *All apps are 100% end-to-end encrypted with zero telemetry and offline-first peer-to-peer routing.*
+          files: |
+            release_assets/*
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -121,11 +121,18 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Build Android APK with Gradle
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Build Android APK
         run: |
+          mkdir -p dist
           cd android
           gradle assembleDebug --no-daemon
-          cp app/build/outputs/apk/debug/app-debug.apk ../dist/isthmus-android-v0.5.0.apk || cp app/build/outputs/apk/*/*/*.apk ../dist/isthmus-android-v0.5.0.apk || true
+          APK_PATH=$(find app/build/outputs/apk/ -name "*.apk" | head -n 1)
+          if [ -n "$APK_PATH" ]; then
+            cp "$APK_PATH" ../dist/isthmus-android-v0.5.0.apk
+          fi
 
       - name: Upload Android APK
         uses: actions/upload-artifact@v4

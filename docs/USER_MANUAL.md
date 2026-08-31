@@ -532,3 +532,57 @@ curl http://your-vm-ip:8080/api/v1/devices
 - Simply back up your `config.json` file:
   - Windows: `%APPDATA%\isthmus\config.json`
   - Linux/macOS: `~/.config/isthmus/config.json`
+
+---
+
+## 9. Next-Gen Enterprise Features Guide
+
+### Tutorial 9: 1-Click Magic PIN & QR Pairing
+To pair two devices without typing long cryptographic public keys:
+1. On Device A (or in the Studio GUI):
+   ```bash
+   isthmus pair-code
+   ```
+   *Displays a 6-digit ephemeral PIN (e.g. `583921`) and ASCII/PNG QR code.*
+2. On Device B:
+   ```bash
+   isthmus pair-join 583921
+   ```
+   *Devices exchange Curve25519 identity keys and establish mutual trust instantly.*
+
+### Tutorial 10: Zero-Trust Encrypted Vault
+To store sensitive API keys, credentials, or backups encrypted client-side with AES-256-GCM:
+1. Check vault status:
+   ```bash
+   isthmus vault status
+   ```
+2. Encrypt a file:
+   ```bash
+   isthmus vault encrypt secrets.json my-strong-passphrase
+   ```
+   *Produces `Vault/secrets.json.enc`.*
+3. Decrypt a file:
+   ```bash
+   isthmus vault decrypt Vault/secrets.json.enc my-strong-passphrase
+   ```
+
+### Tutorial 11: Distributed Fleet Script Runner
+To broadcast shell commands or diagnostics across all connected mesh machines:
+```bash
+# Run uptime on all connected nodes
+isthmus exec --all "uptime"
+
+# Run a Docker command on a specific cloud node
+isthmus exec --target=jack-vm "docker ps"
+```
+
+### Tutorial 12: Mount Mesh Storage as a Native Virtual Drive (WebDAV)
+To mount your Isthmus shared directory as a native drive letter on Windows or a mount point on Linux:
+```bash
+# Windows
+isthmus mount Z:
+
+# Linux
+sudo mount -t davfs http://127.0.0.1:7788/webdav /mnt/isthmus
+```
+

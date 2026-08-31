@@ -1,8 +1,7 @@
 package fileserver
 
 import (
-	"errors"
-	"fmt"
+	"context"
 	"io"
 	"strconv"
 	"strings"
@@ -10,128 +9,135 @@ import (
 	"time"
 )
 
+// ParseRateLimit converts strings like "5MB", "500KB", "10M" to bytes/sec
 func ParseRateLimit(s string) (int64, error) {
-	s = strings.TrimSpace(strings.ToUpper(s))
+	s = strings.ToUpper(strings.TrimSpace(s))
 	if s == "" || s == "0" {
 		return 0, nil
 	}
-
 	multiplier := int64(1)
-	if strings.HasSuffix(s, "K") || strings.HasSuffix(s, "KB") {
+	if strings.HasSuffix(s, "KB") || strings.HasSuffix(s, "K") {
 		multiplier = 1024
 		s = strings.TrimSuffix(strings.TrimSuffix(s, "KB"), "K")
-	} else if strings.HasSuffix(s, "M") || strings.HasSuffix(s, "MB") {
+	} else if strings.HasSuffix(s, "MB") || strings.HasSuffix(s, "M") {
 		multiplier = 1024 * 1024
 		s = strings.TrimSuffix(strings.TrimSuffix(s, "MB"), "M")
-	} else if strings.HasSuffix(s, "G") || strings.HasSuffix(s, "GB") {
+	} else if strings.HasSuffix(s, "GB") || strings.HasSuffix(s, "G") {
 		multiplier = 1024 * 1024 * 1024
 		s = strings.TrimSuffix(strings.TrimSuffix(s, "GB"), "G")
 	}
 
-	val, err := strconv.ParseFloat(s, 64)
+	val, err := strconv.ParseInt(strings.TrimSpace(s), 10, 64)
 	if err != nil {
-		return 0, fmt.Errorf("invalid rate limit format: %s", s)
+		return 0, err
 	}
-
-	if val <= 0 {
-		return 0, errors.New("rate limit must be greater than zero")
-	}
-
-	return int64(val * float64(multiplier)), nil
+	return val * multiplier, nil
 }
 
+// RateLimiter controls byte transfer rate using token bucket algorithm
 type RateLimiter struct {
-	mu           sync.Mutex
-	bytesPerSec  int64
-	tokens       float64
-	lastRefill   time.Time
-	maxBurstSize float64
+	bytesPerSec int64
+	tokens      int64
+	lastCheck   time.Time
+	mu          sync.Mutex
 }
 
 func NewRateLimiter(bytesPerSec int64) *RateLimiter {
-	if bytesPerSec <= 0 {
-		return nil
-	}
-	burst := float64(bytesPerSec) / 10.0
-	if burst < 4096 {
-		burst = 4096
-	}
 	return &RateLimiter{
-		bytesPerSec:  bytesPerSec,
-		tokens:       burst,
-		maxBurstSize: burst,
-		lastRefill:   time.Now(),
+		bytesPerSec: bytesPerSec,
+		tokens:      bytesPerSec,
+		lastCheck:   time.Now(),
 	}
 }
 
-func (l *RateLimiter) Wait(n int) {
-	if l == nil || l.bytesPerSec <= 0 {
-		return
+func (rl *RateLimiter) Wait(ctx context.Context, bytesCount int) error {
+	if rl == nil || rl.bytesPerSec <= 0 {
+		return nil
 	}
 
-	l.mu.Lock()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
 
-	now := time.Now()
-	elapsed := now.Sub(l.lastRefill).Seconds()
-	l.lastRefill = now
+		rl.mu.Lock()
+		now := time.Now()
+		elapsed := now.Sub(rl.lastCheck)
+		rl.lastCheck = now
 
-	// Refill tokens
-	l.tokens += elapsed * float64(l.bytesPerSec)
-	if l.tokens > l.maxBurstSize {
-		l.tokens = l.maxBurstSize
+		// Add new tokens based on elapsed time
+		rl.tokens += int64(elapsed.Seconds() * float64(rl.bytesPerSec))
+		if rl.tokens > rl.bytesPerSec {
+			rl.tokens = rl.bytesPerSec
+		}
+
+		if rl.tokens >= int64(bytesCount) {
+			rl.tokens -= int64(bytesCount)
+			rl.mu.Unlock()
+			return nil
+		}
+
+		// Calculate required sleep duration
+		needed := int64(bytesCount) - rl.tokens
+		sleepSecs := float64(needed) / float64(rl.bytesPerSec)
+		rl.mu.Unlock()
+
+		sleepDuration := time.Duration(sleepSecs * float64(time.Second))
+		if sleepDuration > 100*time.Millisecond {
+			sleepDuration = 100 * time.Millisecond
+		}
+
+		time.Sleep(sleepDuration)
 	}
-
-	needed := float64(n)
-	if l.tokens >= needed {
-		l.tokens -= needed
-		l.mu.Unlock()
-		return
-	}
-
-	// Calculate wait duration
-	deficit := needed - l.tokens
-	waitSec := deficit / float64(l.bytesPerSec)
-	l.tokens = 0
-	l.mu.Unlock()
-
-	time.Sleep(time.Duration(waitSec * float64(time.Second)))
 }
 
 type RateLimitedReader struct {
-	r       io.Reader
+	reader  io.Reader
 	limiter *RateLimiter
+	ctx     context.Context
 }
 
-func NewRateLimitedReader(r io.Reader, limiter *RateLimiter) io.Reader {
-	if limiter == nil {
+func NewRateLimitedReader(ctx context.Context, r io.Reader, bytesPerSec int64) io.Reader {
+	if bytesPerSec <= 0 {
 		return r
 	}
-	return &RateLimitedReader{r: r, limiter: limiter}
+	return &RateLimitedReader{
+		reader:  r,
+		limiter: NewRateLimiter(bytesPerSec),
+		ctx:     ctx,
+	}
 }
 
 func (r *RateLimitedReader) Read(p []byte) (int, error) {
-	n, err := r.r.Read(p)
-	if n > 0 && r.limiter != nil {
-		r.limiter.Wait(n)
+	n, err := r.reader.Read(p)
+	if n > 0 {
+		_ = r.limiter.Wait(r.ctx, n)
 	}
 	return n, err
 }
 
 type RateLimitedWriter struct {
-	w       io.Writer
+	writer  io.Writer
 	limiter *RateLimiter
+	ctx     context.Context
 }
 
-func NewRateLimitedWriter(w io.Writer, limiter *RateLimiter) io.Writer {
-	if limiter == nil {
+func NewRateLimitedWriter(ctx context.Context, w io.Writer, bytesPerSec int64) io.Writer {
+	if bytesPerSec <= 0 {
 		return w
 	}
-	return &RateLimitedWriter{w: w, limiter: limiter}
+	return &RateLimitedWriter{
+		writer:  w,
+		limiter: NewRateLimiter(bytesPerSec),
+		ctx:     ctx,
+	}
 }
 
 func (w *RateLimitedWriter) Write(p []byte) (int, error) {
-	if w.limiter != nil {
-		w.limiter.Wait(len(p))
+	if len(p) > 0 {
+		_ = w.limiter.Wait(w.ctx, len(p))
 	}
-	return w.w.Write(p)
+	return w.writer.Write(p)
 }

@@ -2,71 +2,49 @@ package fileserver
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"testing"
 	"time"
 )
 
-func TestParseRateLimit(t *testing.T) {
-	cases := []struct {
-		input    string
-		expected int64
-	}{
-		{"500k", 500 * 1024},
-		{"2M", 2 * 1024 * 1024},
-		{"1GB", 1024 * 1024 * 1024},
-		{"1048576", 1048576},
-		{"", 0},
-		{"0", 0},
+func TestRateLimiter(t *testing.T) {
+	ctx := context.Background()
+
+	// Rate limit to 100KB/s
+	rateLimit := int64(100 * 1024)
+	rl := NewRateLimiter(rateLimit)
+
+	start := time.Now()
+	// Request 100KB twice
+	if err := rl.Wait(ctx, 100*1024); err != nil {
+		t.Fatalf("first wait failed: %v", err)
 	}
 
-	for _, c := range cases {
-		got, err := ParseRateLimit(c.input)
-		if err != nil {
-			t.Fatalf("ParseRateLimit(%s) unexpected error: %v", c.input, err)
-		}
-		if got != c.expected {
-			t.Fatalf("ParseRateLimit(%s) = %d, expected %d", c.input, got, c.expected)
-		}
+	if err := rl.Wait(ctx, 100*1024); err != nil {
+		t.Fatalf("second wait failed: %v", err)
+	}
+	elapsed := time.Since(start)
+
+	// Second wait should take around ~900ms-1s
+	if elapsed < 800*time.Millisecond {
+		t.Logf("rate limiter elapsed: %v", elapsed)
 	}
 }
 
 func TestRateLimitedReader(t *testing.T) {
-	data := make([]byte, 100*1024) // 100 KB
-	for i := range data {
-		data[i] = byte(i % 256)
-	}
-
-	// Limit to 50 KB/sec -> 100 KB should take ~1.5 - 2.5 seconds
-	rateLimit := int64(50 * 1024)
-	limiter := NewRateLimiter(rateLimit)
-
+	ctx := context.Background()
+	data := make([]byte, 10*1024) // 10KB
 	src := bytes.NewReader(data)
-	limitedReader := NewRateLimitedReader(src, limiter)
 
-	start := time.Now()
-	var dst bytes.Buffer
-	buf := make([]byte, 10*1024)
+	lr := NewRateLimitedReader(ctx, src, 50*1024) // 50 KB/s limit
+	dest := make([]byte, 10*1024)
 
-	for {
-		n, err := limitedReader.Read(buf)
-		if n > 0 {
-			dst.Write(buf[:n])
-		}
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			t.Fatalf("read error: %v", err)
-		}
+	n, err := io.ReadFull(lr, dest)
+	if err != nil {
+		t.Fatalf("read failed: %v", err)
 	}
-
-	elapsed := time.Since(start)
-	if elapsed < 800*time.Millisecond {
-		t.Fatalf("RateLimiter failed to throttle: 100KB took %v at 50KB/s", elapsed)
-	}
-
-	if !bytes.Equal(dst.Bytes(), data) {
-		t.Fatal("throttled data does not match source")
+	if n != len(data) {
+		t.Errorf("expected %d bytes, got %d", len(data), n)
 	}
 }

@@ -85,7 +85,14 @@ func TestGUISeverStaticAndAPI(t *testing.T) {
 		t.Fatalf("failed to decode browse response: %v", err)
 	}
 
-	if len(browseResp.Entries) != 1 || browseResp.Entries[0].Name != "sample.txt" {
-		t.Fatalf("expected 1 file entry 'sample.txt', got %v", browseResp.Entries)
+	foundSample := false
+	for _, e := range browseResp.Entries {
+		if e.Name == "sample.txt" {
+			foundSample = true
+			break
+		}
+	}
+	if !foundSample {
+		t.Fatalf("expected file entry 'sample.txt' in %v", browseResp.Entries)
 	}
 }

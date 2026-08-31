@@ -3,289 +3,762 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Isthmus | Cross-Device Secure Tunnel &amp; File Mesh</title>
-  <link rel="stylesheet" href="style.css">
+  <title>Isthmus | Cross-Device Secure Mesh</title>
+  <link rel="stylesheet" href="style.css?v=6">
 </head>
 <body>
-  <div class="app-shell">
-    <!-- Header -->
-    <header class="app-header">
-      <div class="brand-row">
-        <img src="isthmus-logo.png" alt="Logo" class="brand-logo">
-        <span class="brand-title">Isthmus</span>
-        <span class="brand-tag">v0.5.0</span>
+  <div class="workbench-root">
+    <!-- 1. Left Activity Rail (58px) -->
+    <aside class="activity-rail">
+      <div class="rail-logo" title="Isthmus Mesh Engine">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
       </div>
 
-      <!-- Navigation Tabs -->
-      <nav class="nav-group">
-        <button class="nav-tab active" id="nav-explorer" onclick="switchTab('explorer')">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-          Explorer
+      <nav class="rail-nav">
+        <button class="rail-btn active" id="rail-explorer" onclick="switchMainTab('explorer')" title="File Explorer">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
         </button>
-        <button class="nav-tab" id="nav-peers" onclick="switchTab('peers')">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
-          Mesh Nodes
+
+        <button class="rail-btn" id="rail-peers" onclick="switchMainTab('peers')" title="Mesh Nodes">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
         </button>
-        <button class="nav-tab" id="nav-transfers" onclick="switchTab('transfers')">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-          Transfers <span id="transfers-badge" style="display: none; font-size: 10px; background: var(--blue-primary); color: #fff; padding: 1px 5px; border-radius: 4px; margin-left: 4px;">0</span>
+
+        <button class="rail-btn" id="rail-clipboard" onclick="switchMainTab('clipboard')" title="Magic Clipboard Sync">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
         </button>
-        <button class="nav-tab" id="nav-security" onclick="switchTab('security')">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-          Security &amp; ACL
+
+        <button class="rail-btn" id="rail-diagnostics" onclick="switchMainTab('diagnostics')" title="Mesh Speedtest &amp; Ping">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         </button>
-        <button class="nav-tab" id="nav-logs" onclick="switchTab('logs')">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-          Logs
+
+        <button class="rail-btn" id="rail-transfers" onclick="switchMainTab('transfers')" title="Transfers Queue">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+          <span class="rail-badge" id="transfers-badge" style="display: none;">0</span>
+        </button>
+
+        <button class="rail-btn" id="rail-security" onclick="switchMainTab('security')" title="Security &amp; ACL">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        </button>
+
+        <button class="rail-btn" id="rail-terminal" onclick="switchMainTab('terminal')" title="Interactive Terminal">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+        </button>
+
+        <button class="rail-btn" id="rail-vault" onclick="switchMainTab('vault')" title="Zero-Trust Encrypted Vault">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        </button>
+
+        <button class="rail-btn" id="rail-runner" onclick="switchMainTab('runner')" title="Distributed Task Runner">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        </button>
+
+        <button class="rail-btn" id="rail-mount" onclick="switchMainTab('mount')" title="Virtual Drive Mount">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+        </button>
+
+        <button class="rail-btn" id="rail-relay" onclick="switchMainTab('relay')" title="Multi-Hop Relay Routes">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+        </button>
+
+        <button class="rail-btn" id="rail-logs" onclick="switchMainTab('logs')" title="Daemon Logs">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
         </button>
       </nav>
 
-      <div class="header-right">
-        <div class="status-badge">
-          <div class="status-dot"></div>
-          <span>Online</span>
-        </div>
-        <button class="btn btn-sm btn-primary" onclick="showAddPeerModal()">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          Pair Peer
+      <div class="rail-bottom">
+        <button class="rail-btn" onclick="showAddPeerModal()" title="Pair New Peer" style="background: var(--accent-subtle); color: var(--accent-primary); border-color: var(--accent-border);">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </button>
+        <div class="mesh-indicator-dot" title="Mesh Online"></div>
+      </div>
+    </aside>
+
+    <!-- 2. Device Tree Sidebar (240px) -->
+    <aside class="tree-sidebar">
+      <div class="sidebar-header">
+        <span>Mesh Nodes</span>
+        <button class="btn btn-icon btn-sm" onclick="refreshAll()" title="Refresh Nodes">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
         </button>
       </div>
-    </header>
 
-    <!-- Main Split Layout -->
-    <div class="main-layout">
-      <!-- Left Sidebar -->
-      <aside class="sidebar">
-        <div class="sidebar-header">
-          <span class="sidebar-title">Mesh Network</span>
-          <span style="font-size: 11px; font-family: var(--font-mono); color: var(--text-muted);" id="sidebar-device-count">--</span>
-        </div>
-        <div class="peer-list" id="device-list">
-          <!-- Rendered via JS -->
-        </div>
-        <div class="sidebar-footer">
-          <div class="footer-stat">
-            <span>Coordination:</span>
-            <span style="color: #ffffff;" id="sidebar-coord-status">--</span>
-          </div>
-          <div class="footer-stat">
-            <span>Tunnel Port:</span>
-            <span style="color: var(--blue-text);" id="sidebar-tunnel-port">--</span>
-          </div>
-          <div class="footer-stat">
-            <span>SFTP Port:</span>
-            <span style="color: var(--blue-text);" id="sidebar-sftp-port">--</span>
-          </div>
-          <div class="footer-stat">
-            <span>Virtual IP:</span>
-            <span style="color: #ffffff;" id="sidebar-virtual-ip">--</span>
-          </div>
-        </div>
-      </aside>
+      <div class="node-group" id="tree-node-list">
+        <!-- Populated via JS -->
+      </div>
 
-      <!-- Center Workspace -->
-      <main class="workspace">
-        <!-- Toolbar -->
-        <div class="workspace-toolbar">
-          <div class="breadcrumb-box" id="breadcrumb-container">
-            <span class="crumb-btn" onclick="navigateToPath('.')">SharedRoot</span>
-            <span class="crumb-sep">/</span>
-            <span class="crumb-current">.</span>
-          </div>
+      <div class="sidebar-status-box">
+        <div class="stat-item">
+          <span class="label">Virtual IP</span>
+          <span class="val" id="sidebar-virtual-ip">10.77.0.1</span>
+        </div>
+        <div class="stat-item">
+          <span class="label">SFTP Port</span>
+          <span class="val" id="sidebar-sftp-port">2222</span>
+        </div>
+        <div class="stat-item">
+          <span class="label">Mesh Port</span>
+          <span class="val" id="sidebar-tunnel-port">51820</span>
+        </div>
+        <div class="stat-item">
+          <span class="label">Discovery</span>
+          <span class="val" id="sidebar-coord-status" style="color: var(--accent-primary);">Direct LAN</span>
+        </div>
+      </div>
+    </aside>
 
-          <div class="tool-actions">
-            <button class="btn btn-sm btn-primary" onclick="triggerFileUpload()">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-              Upload
-            </button>
-            <button class="btn btn-sm" onclick="triggerSync()">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-              Sync
-            </button>
-            <button class="btn btn-sm" onclick="showNewFolderModal()">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
-              New Folder
-            </button>
-            <button class="btn btn-sm btn-icon" onclick="navigateUp()" title="Parent Directory">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
-            </button>
-            <button class="btn btn-sm btn-icon" onclick="refreshCurrentView()" title="Refresh">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-            </button>
-            <input type="file" id="file-input-hidden" style="display: none;" multiple onchange="handleFileSelected(event)">
-          </div>
+    <!-- 3. Main Stage -->
+    <main class="stage-main">
+      <!-- Top Command Bar -->
+      <header class="command-bar">
+        <div class="crumb-nav" id="stage-breadcrumbs">
+          <span class="crumb-link" onclick="navigateTo('.')">Root</span>
         </div>
 
-        <!-- 1. File Explorer Tab -->
-        <div class="tab-content active" id="tab-explorer">
-          <div class="table-wrap" id="dropzone-target" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event)">
-            <!-- Drop Overlay -->
-            <div class="dropzone-overlay" id="dropzone-overlay">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--blue-primary);"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-              <span style="font-weight: 600; font-size: 14px;">Drop files to upload to peer</span>
+        <div class="command-actions">
+          <!-- Search input -->
+          <div class="search-box">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="file-search-input" placeholder="Search files..." oninput="filterFiles(this.value)">
+            <span class="search-shortcut">/</span>
+          </div>
+
+          <!-- View Mode Toggle (Grid vs Table) -->
+          <div class="view-toggle-wrap">
+            <button class="view-btn active" id="view-mode-grid" onclick="setViewMode('grid')" title="Grid View">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+            </button>
+            <button class="view-btn" id="view-mode-table" onclick="setViewMode('table')" title="List View">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+            </button>
+          </div>
+
+          <button class="btn btn-sm" onclick="showNewFolderModal()">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
+            New Folder
+          </button>
+
+          <input type="file" id="file-upload-input" multiple style="display: none;" onchange="handleFileUpload(event)">
+          <button class="btn btn-sm btn-primary" onclick="document.getElementById('file-upload-input').click()">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Upload
+          </button>
+        </div>
+      </header>
+
+      <!-- Panes -->
+      <!-- 1. Explorer Pane -->
+      <div class="tab-pane active" id="pane-explorer">
+        <div class="stage-body-wrap">
+          <!-- Left Main Grid / Table Content -->
+          <div class="stage-content-scroll" id="explorer-scroll-area">
+            <!-- Grid Mode Container -->
+            <div class="files-grid-layout" id="files-grid-container">
+              <!-- Populated via JS -->
             </div>
 
-            <!-- Table -->
-            <table class="file-table">
-              <thead>
-                <tr>
-                  <th style="width: 45%;">Name</th>
-                  <th style="width: 18%;">Size</th>
-                  <th style="width: 22%;">Modified</th>
-                  <th style="width: 15%; text-align: right;">Action</th>
-                </tr>
-              </thead>
-              <tbody id="file-table-body">
-                <tr>
-                  <td colspan="4" style="text-align: center; padding: 36px; color: var(--text-muted);">
-                    Loading files...
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <!-- 2. Mesh Nodes Tab -->
-        <div class="tab-content" id="tab-peers">
-          <div class="peers-container">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-              <div>
-                <h3 style="font-size: 15px; font-weight: 700; color: #ffffff;">Authorized Mesh Nodes</h3>
-                <p style="font-size: 12px; color: var(--text-muted);">Devices connected in your private P2P network.</p>
-              </div>
-              <button class="btn btn-sm btn-primary" onclick="showAddPeerModal()">[+] Pair Peer</button>
-            </div>
-            <div class="peer-grid" id="peers-grid">
-              <!-- Rendered via JS -->
-            </div>
-          </div>
-        </div>
-
-        <!-- 3. Transfers Tab -->
-        <div class="tab-content" id="tab-transfers">
-          <div class="transfers-wrap" id="transfers-list">
-            <div style="text-align: center; padding: 40px; color: var(--text-muted);">
-              No active transfers in queue.
-            </div>
-          </div>
-        </div>
-
-        <!-- 4. Security Tab -->
-        <div class="tab-content" id="tab-security">
-          <div class="security-wrap">
-            <div class="panel-card">
-              <div class="card-title">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                Local Identity
-              </div>
-              <div class="form-field">
-                <label class="field-label">Device Name</label>
-                <input type="text" class="input-flat" id="sec-device-name" readonly placeholder="Loading...">
-              </div>
-              <div class="form-field">
-                <label class="field-label">Device ID (SHA256)</label>
-                <input type="text" class="input-flat input-mono" id="sec-device-id" readonly placeholder="Loading...">
-              </div>
-              <div class="form-field">
-                <label class="field-label">Public Key (Ed25519)</label>
-                <input type="text" class="input-flat input-mono" id="sec-public-key" readonly placeholder="Loading...">
-              </div>
-              <div class="form-field">
-                <label class="field-label">Shared Root Folder</label>
-                <input type="text" class="input-flat input-mono" id="sec-shared-dir" readonly placeholder="Loading...">
-              </div>
-            </div>
-
-            <div class="panel-card">
-              <div class="card-title">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                Peer Access Control Rules (ACL)
-              </div>
-              <div class="form-field">
-                <label class="field-label">Select Peer</label>
-                <select class="input-flat" id="acl-peer-select" onchange="loadPeerACLDetails()">
+            <!-- Table Mode Container -->
+            <div id="files-table-container" style="display: none;">
+              <table class="files-table-wrap">
+                <thead>
+                  <tr>
+                    <th style="width: 45%;">Name</th>
+                    <th style="width: 15%;">Size</th>
+                    <th style="width: 25%;">Modified</th>
+                    <th style="width: 15%; text-align: right;">Action</th>
+                  </tr>
+                </thead>
+                <tbody id="files-table-body">
                   <!-- Populated via JS -->
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Empty State -->
+            <div id="explorer-empty" style="display: none; padding: 80px 20px; text-align: center; color: var(--text-muted);">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom: 8px;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+              <div style="font-size: 14px; font-weight: 600; color: #ffffff;">Folder is empty</div>
+              <div style="font-size: 12px;">Drag and drop files here to transfer across mesh</div>
+            </div>
+          </div>
+
+          <!-- Right File Inspector (270px) -->
+          <aside class="inspector-panel" id="file-inspector" style="display: none;">
+            <div class="inspector-header">
+              <span>File Details</span>
+              <button class="btn btn-sm btn-icon" onclick="closeInspector()">X</button>
+            </div>
+            <div class="inspector-icon-large" id="insp-icon">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
+            </div>
+            <div class="inspector-filename" id="insp-filename">filename.ext</div>
+            
+            <div class="inspector-detail-row">
+              <span class="label">File Size</span>
+              <span class="value" id="insp-size">0 B</span>
+            </div>
+            <div class="inspector-detail-row">
+              <span class="label">Last Modified</span>
+              <span class="value" id="insp-date">--</span>
+            </div>
+            <div class="inspector-detail-row">
+              <span class="label">Target Node</span>
+              <span class="value" id="insp-node">--</span>
+            </div>
+
+            <!-- Actions -->
+            <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 8px;">
+              <div style="display: flex; gap: 6px;">
+                <button class="btn btn-primary btn-sm" style="flex: 1;" id="insp-btn-edit">Edit Code</button>
+                <button class="btn btn-sm" style="flex: 1;" id="insp-btn-stream">Stream</button>
+              </div>
+              <div style="display: flex; gap: 6px;">
+                <button class="btn btn-sm" style="flex: 1;" id="insp-btn-share">Share Link</button>
+                <button class="btn btn-sm" style="flex: 1;" id="insp-btn-download">Download</button>
+              </div>
+              <button class="btn btn-danger btn-sm" id="insp-btn-delete">Delete File</button>
+            </div>
+
+            <!-- Time Machine Revision History -->
+            <div style="margin-top: 14px; border-top: 1px solid var(--border-subtle); padding-top: 12px;">
+              <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px;">
+                Time-Machine Revisions
+              </div>
+              <div id="insp-revisions-list" style="font-family: var(--font-mono); font-size: 11px; display: flex; flex-direction: column; gap: 4px;">
+                <span style="color: var(--text-dim);">No prior snapshots</span>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </div>
+
+      <!-- 2. Mesh Nodes Pane -->
+      <div class="tab-pane" id="pane-peers">
+        <div class="stage-content-scroll">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <span style="font-size: 15px; font-weight: 800; color: #ffffff;">Configured Mesh Nodes</span>
+            <button class="btn btn-primary" onclick="showAddPeerModal()">Pair New Device</button>
+          </div>
+          <table class="files-table-wrap">
+            <thead>
+              <tr>
+                <th>Device Name</th>
+                <th>Device ID</th>
+                <th>Mesh IP</th>
+                <th>Transport Tier</th>
+                <th>Access Policy</th>
+                <th style="text-align: right;">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="peers-table-body">
+              <!-- Populated via JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 3. Magic Clipboard Pane -->
+      <div class="tab-pane" id="pane-clipboard">
+        <div class="stage-content-scroll" style="max-width: 800px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <span style="font-size: 15px; font-weight: 800; color: #ffffff;">Universal Magic Clipboard</span>
+            <button class="btn btn-sm" onclick="loadClipboard()">Refresh</button>
+          </div>
+
+          <div style="background: var(--bg-card); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 16px; margin-bottom: 18px;">
+            <div style="font-size: 12px; font-weight: 700; color: var(--accent-primary); margin-bottom: 8px; text-transform: uppercase;">
+              Push to All Mesh Devices:
+            </div>
+            <textarea id="clipboard-push-input" class="input-flat input-mono" style="height: 80px; resize: none; margin-bottom: 10px;" placeholder="Paste text, URLs, OTPs, or API keys here..."></textarea>
+            <div style="display: flex; justify-content: flex-end;">
+              <button class="btn btn-primary btn-sm" onclick="pushClipboard()">Broadcast to Mesh</button>
+            </div>
+          </div>
+
+          <div style="font-size: 12px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 10px;">
+            Synced Clipboard History
+          </div>
+          <div id="clipboard-history-list" style="display: flex; flex-direction: column; gap: 8px;">
+            <!-- Populated via JS -->
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. Mesh Diagnostics & Speedtest Pane -->
+      <div class="tab-pane" id="pane-diagnostics">
+        <div class="stage-content-scroll" style="max-width: 800px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <span style="font-size: 15px; font-weight: 800; color: #ffffff;">Mesh Diagnostics &amp; Speedtest</span>
+          </div>
+
+          <div style="background: var(--bg-card); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 18px; margin-bottom: 18px;">
+            <div class="form-field">
+              <label class="field-label">Target Peer Node</label>
+              <select class="input-flat" id="diag-peer-select">
+                <!-- Populated via JS -->
+              </select>
+            </div>
+            <div style="display: flex; gap: 10px;">
+              <button class="btn btn-primary" onclick="runPingTest()">Run Ping Test</button>
+              <button class="btn" onclick="runSpeedtest()">Run Bandwidth Speedtest</button>
+            </div>
+          </div>
+
+          <div id="diag-results-box" style="background: #000000; border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 16px; font-family: var(--font-mono); font-size: 12.5px; color: var(--text-primary); min-height: 120px; line-height: 1.6;">
+            Select a target peer and click 'Run Ping Test' or 'Run Bandwidth Speedtest'.
+          </div>
+        </div>
+      </div>
+
+      <!-- 5. Transfers Pane -->
+      <div class="tab-pane" id="pane-transfers">
+        <div class="stage-content-scroll">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <span style="font-size: 15px; font-weight: 800; color: #ffffff;">Active &amp; Completed Transfers</span>
+            <button class="btn btn-sm" onclick="clearCompletedTransfers()">Clear Completed</button>
+          </div>
+          <div id="transfers-queue-list">
+            <!-- Populated via JS -->
+          </div>
+        </div>
+      </div>
+
+      <!-- 6. Security Pane -->
+      <div class="tab-pane" id="pane-security">
+        <div class="stage-content-scroll" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+          <div style="background: var(--bg-card); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 18px;">
+            <div style="font-size: 14px; font-weight: 800; color: #ffffff; margin-bottom: 16px; border-bottom: 1px solid var(--border-subtle); padding-bottom: 8px;">
+              Local Cryptographic Identity
+            </div>
+            <div class="form-field">
+              <label class="field-label">Device Name</label>
+              <input type="text" class="input-flat" id="sec-device-name" readonly>
+            </div>
+            <div class="form-field">
+              <label class="field-label">Device ID (SHA256 Fingerprint)</label>
+              <input type="text" class="input-flat input-mono" id="sec-device-id" readonly>
+            </div>
+            <div class="form-field">
+              <label class="field-label">Public Key (Ed25519)</label>
+              <input type="text" class="input-flat input-mono" id="sec-public-key" readonly>
+            </div>
+            <div class="form-field">
+              <label class="field-label">Shared Root Directory</label>
+              <input type="text" class="input-flat input-mono" id="sec-shared-dir" readonly>
+            </div>
+          </div>
+
+          <div style="background: var(--bg-card); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 18px;">
+            <div style="font-size: 14px; font-weight: 800; color: #ffffff; margin-bottom: 16px; border-bottom: 1px solid var(--border-subtle); padding-bottom: 8px;">
+              Peer Access Rules (ACL)
+            </div>
+            <div class="form-field">
+              <label class="field-label">Target Node</label>
+              <select class="input-flat" id="acl-peer-select" onchange="loadPeerACLDetails()">
+                <!-- Populated via JS -->
+              </select>
+            </div>
+            <div style="display: flex; gap: 20px; padding: 4px 0;">
+              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; color: var(--text-primary); font-size: 12px;">
+                <input type="checkbox" id="acl-allow-read" checked> Allow Read
+              </label>
+              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; color: var(--text-primary); font-size: 12px;">
+                <input type="checkbox" id="acl-allow-write" checked> Allow Write
+              </label>
+            </div>
+            <div class="form-field" style="margin-top: 10px;">
+              <label class="field-label">Allowed Paths (Sandbox)</label>
+              <input type="text" class="input-flat input-mono" id="acl-allowed-paths" placeholder="blank allows all">
+            </div>
+            <div class="form-field">
+              <label class="field-label">Blocked Paths (Deny List)</label>
+              <input type="text" class="input-flat input-mono" id="acl-blocked-paths" placeholder=".ssh, .env, .git">
+            </div>
+            <div style="display: flex; justify-content: flex-end; margin-top: 8px;">
+              <button class="btn btn-primary" onclick="savePeerACL()">Save Policy</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 7. Terminal Pane -->
+      <div class="tab-pane" id="pane-terminal">
+        <div style="display: flex; flex-direction: column; height: 100%; background: #000000;">
+          <div style="display: flex; gap: 12px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--border-default); background: var(--bg-sidebar);">
+            <span style="font-size: 12px; font-weight: 700; color: #ffffff;">Remote Shell Target:</span>
+            <select class="input-flat" id="terminal-target-select" style="max-width: 240px;" onchange="switchTerminalTarget()">
+              <!-- Populated via JS -->
+            </select>
+            <button class="btn btn-sm btn-primary" onclick="connectTerminal()">Connect Session</button>
+            <button class="btn btn-sm" onclick="clearTerminal()">Clear</button>
+          </div>
+          <div id="terminal-container" style="flex: 1; padding: 16px; font-family: var(--font-mono); font-size: 13px; background: #000000; overflow-y: auto; color: var(--text-primary); line-height: 1.5;">
+            <div id="terminal-output" style="white-space: pre-wrap; word-break: break-all;">Welcome to Isthmus Remote Web Terminal. Select a node and click 'Connect Session'.</div>
+            <div style="display: flex; align-items: center; margin-top: 10px;">
+              <span id="terminal-prompt" style="color: var(--accent-primary); margin-right: 8px; font-weight: 700;">isthmus&gt;</span>
+              <input type="text" id="terminal-input" style="flex: 1; background: transparent; border: none; outline: none; color: #ffffff; font-family: var(--font-mono); font-size: 13px;" onkeydown="handleTerminalKey(event)" placeholder="Type command..." autofocus>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 8. Logs Pane -->
+      <div class="tab-pane" id="pane-logs">
+        <div style="flex: 1; background: #000000; padding: 16px; font-family: var(--font-mono); font-size: 12px; overflow-y: auto; color: var(--text-secondary); line-height: 1.6;" id="console-logs">
+          Connecting to live daemon logs...
+        </div>
+      </div>
+
+      <!-- 9. Zero-Trust Encrypted Vault Pane -->
+      <div class="tab-pane" id="pane-vault">
+        <div class="stage-content-scroll" style="max-width: 850px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="font-size: 15px; font-weight: 800; color: #ffffff;">Zero-Trust Encrypted Vault</span>
+              <span id="vault-status-badge" style="font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: rgba(239, 68, 68, 0.2); color: var(--status-danger);">LOCKED</span>
+            </div>
+            <button class="btn btn-sm" onclick="loadVaultStatus()">Refresh</button>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+            <!-- Unlock / Lock Card -->
+            <div style="background: var(--bg-card); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 16px;">
+              <div style="font-size: 13px; font-weight: 700; color: var(--accent-primary); margin-bottom: 12px; text-transform: uppercase;">
+                Master Key Authorization
+              </div>
+              <div class="form-field">
+                <label class="field-label">Master Passphrase</label>
+                <input type="password" class="input-flat" id="vault-passphrase" placeholder="Enter master passphrase...">
+              </div>
+              <div class="form-field">
+                <label class="field-label">Auto-Lock Duration</label>
+                <select class="input-flat" id="vault-duration">
+                  <option value="15">15 Minutes</option>
+                  <option value="30" selected>30 Minutes</option>
+                  <option value="60">1 Hour</option>
+                  <option value="240">4 Hours</option>
                 </select>
               </div>
-              <div style="display: flex; gap: 20px; padding: 4px 0;">
-                <label class="checkbox-row">
-                  <input type="checkbox" id="acl-allow-read" checked> Allow Read
-                </label>
-                <label class="checkbox-row">
-                  <input type="checkbox" id="acl-allow-write" checked> Allow Write
-                </label>
+              <div style="display: flex; gap: 8px; margin-top: 12px;">
+                <button class="btn btn-primary" style="flex: 1;" onclick="unlockVault()">Unlock Vault</button>
+                <button class="btn btn-danger" onclick="lockVault()">Lock Now</button>
               </div>
-              <div class="form-field">
-                <label class="field-label">Path Sandboxing (Allowed Folders)</label>
-                <input type="text" class="input-flat input-mono" id="acl-allowed-paths" placeholder="e.g. projects, shared (blank allows all)">
+            </div>
+
+            <!-- Vault Summary Card -->
+            <div style="background: var(--bg-card); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 16px;">
+              <div style="font-size: 13px; font-weight: 700; color: #ffffff; margin-bottom: 12px; text-transform: uppercase;">
+                Vault Security Overview
               </div>
-              <div class="form-field">
-                <label class="field-label">Security Deny List (Blocked Paths)</label>
-                <input type="text" class="input-flat input-mono" id="acl-blocked-paths" placeholder="e.g. .ssh, .env, .git">
+              <div class="inspector-detail-row">
+                <span class="label">Encryption Standard</span>
+                <span class="value" style="color: var(--accent-primary); font-weight: 700;">AES-256-GCM (AuthTag)</span>
               </div>
-              <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
-                <button class="btn btn-sm btn-primary" onclick="savePeerACL()">Save Policy</button>
+              <div class="inspector-detail-row">
+                <span class="label">Key Derivation</span>
+                <span class="value">PBKDF2-SHA256 (50,000 rounds)</span>
+              </div>
+              <div class="inspector-detail-row">
+                <span class="label">Encrypted Files</span>
+                <span class="value" id="vault-files-count">0 files</span>
+              </div>
+              <div class="inspector-detail-row">
+                <span class="label">Directory</span>
+                <span class="value" id="vault-dir-path" style="font-family: var(--font-mono); font-size: 11px;">Shared/Vault/</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Encrypt / Decrypt Actions -->
+          <div style="background: var(--bg-card); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 16px;">
+            <div style="font-size: 13px; font-weight: 700; color: #ffffff; margin-bottom: 12px; text-transform: uppercase;">
+              Quick Encrypt / Decrypt Tool
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+              <div>
+                <div class="form-field">
+                  <label class="field-label">File to Encrypt (Relative to shared folder)</label>
+                  <input type="text" class="input-flat input-mono" id="vault-encrypt-file" placeholder="e.g. secrets.json">
+                </div>
+                <button class="btn btn-sm btn-primary" onclick="encryptFileToVault()">Encrypt to Vault (.enc)</button>
+              </div>
+              <div>
+                <div class="form-field">
+                  <label class="field-label">Encrypted File to Decrypt</label>
+                  <input type="text" class="input-flat input-mono" id="vault-decrypt-file" placeholder="e.g. Vault/secrets.json.enc">
+                </div>
+                <button class="btn btn-sm" onclick="decryptFileFromVault()">Decrypt to Shared Root</button>
               </div>
             </div>
           </div>
         </div>
+      </div>
 
-        <!-- 5. Logs Tab -->
-        <div class="tab-content" id="tab-logs">
-          <div style="flex: 1; background: #000000; padding: 14px; font-family: var(--font-mono); font-size: 11.5px; overflow-y: auto; color: var(--text-secondary); line-height: 1.5;" id="console-logs">
-            Connecting to live daemon logs...
+      <!-- 10. Distributed Task Runner Pane -->
+      <div class="tab-pane" id="pane-runner">
+        <div class="stage-content-scroll" style="max-width: 900px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <span style="font-size: 15px; font-weight: 800; color: #ffffff;">Distributed Mesh Task &amp; Script Runner</span>
+          </div>
+
+          <div style="background: var(--bg-card); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 16px; margin-bottom: 16px;">
+            <div class="form-field">
+              <label class="field-label">Target Execution Fleet</label>
+              <select class="input-flat" id="runner-target-select">
+                <option value="all">⚡ All Connected Mesh Nodes (Simultaneous Broadcast)</option>
+                <option value="local">💻 This Local Machine</option>
+                <!-- Peers populated via JS -->
+              </select>
+            </div>
+
+            <!-- Quick Template Buttons -->
+            <div style="margin-bottom: 12px;">
+              <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px;">
+                Quick Fleet Templates:
+              </div>
+              <div style="display: flex; gap: 6px; flex-wrap: wrap;" id="runner-templates-wrap">
+                <button class="btn btn-sm" onclick="applyRunnerTemplate('System Uptime')">System Uptime</button>
+                <button class="btn btn-sm" onclick="applyRunnerTemplate('Disk Space')">Disk Space</button>
+                <button class="btn btn-sm" onclick="applyRunnerTemplate('Active Processes')">Active Processes</button>
+                <button class="btn btn-sm" onclick="applyRunnerTemplate('Network Status')">Network Status</button>
+              </div>
+            </div>
+
+            <div class="form-field">
+              <label class="field-label">Shell Command / Script</label>
+              <textarea class="input-flat input-mono" id="runner-cmd-input" style="height: 70px; resize: none;" placeholder="e.g. git pull, docker ps, uptime"></textarea>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end;">
+              <button class="btn btn-primary" id="btn-dispatch-runner" onclick="dispatchMeshJob()">⚡ Dispatch to Fleet</button>
+            </div>
+          </div>
+
+          <div style="font-size: 12px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px;">
+            Fleet Execution Results:
+          </div>
+          <div id="runner-results-stream" style="display: flex; flex-direction: column; gap: 10px;">
+            <div style="background: #000000; border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 16px; font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); text-align: center;">
+              Select target nodes, enter a command, and click 'Dispatch to Fleet'.
+            </div>
           </div>
         </div>
-      </main>
-    </div>
+      </div>
 
-    <!-- Footer -->
-    <footer class="app-footer">
-      <div style="display: flex; gap: 12px;">
-        <span>Active Node: <strong id="status-peer-name" style="color: #ffffff;">Loading...</strong></span>
-        <span>&bull;</span>
-        <span>Transport: <strong id="status-transport-tier" style="color: var(--blue-text);">--</strong></span>
+      <!-- 11. Virtual Drive Mount Pane -->
+      <div class="tab-pane" id="pane-mount">
+        <div class="stage-content-scroll" style="max-width: 800px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <span style="font-size: 15px; font-weight: 800; color: #ffffff;">Virtual Drive Mount (WebDAV)</span>
+          </div>
+
+          <div style="background: var(--bg-card); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 18px; margin-bottom: 16px;">
+            <div style="font-size: 13px; font-weight: 700; color: var(--accent-primary); margin-bottom: 12px; text-transform: uppercase;">
+              Mount Mesh as Local Disk Drive
+            </div>
+            <p style="font-size: 12.5px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 14px;">
+              Mount your entire Isthmus mesh storage directly as a drive letter on Windows (e.g. <code>Z:</code>) or a volume on macOS/Linux. Applications can open, stream, and save remote files transparently.
+            </p>
+
+            <div class="form-field">
+              <label class="field-label">Target Drive Letter / Mount Point</label>
+              <select class="input-flat input-mono" id="mount-drive-select" onchange="loadMountCommand()" style="max-width: 150px;">
+                <option value="Z:">Z: (Default)</option>
+                <option value="Y:">Y:</option>
+                <option value="X:">X:</option>
+                <option value="W:">W:</option>
+              </select>
+            </div>
+
+            <div style="margin-top: 14px;">
+              <label class="field-label">1-Click Mount Command (Run in Terminal / PowerShell):</label>
+              <div style="display: flex; gap: 8px;">
+                <input type="text" class="input-flat input-mono" id="mount-command-text" readonly onclick="this.select()" style="flex: 1;">
+                <button class="btn btn-primary" onclick="copyMountCommand()">Copy Command</button>
+              </div>
+            </div>
+
+            <div style="margin-top: 14px; background: var(--bg-elevated); padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle); font-size: 11.5px; color: var(--text-muted);">
+              <strong>WebDAV Stream URL:</strong> <code style="color: var(--accent-primary);" id="mount-webdav-url">http://127.0.0.1:7788/webdav</code>
+            </div>
+          </div>
+        </div>
       </div>
-      <div>
-        <span id="status-items-count">0 items</span>
+
+      <!-- 12. Multi-Hop Relay Routes Pane -->
+      <div class="tab-pane" id="pane-relay">
+        <div class="stage-content-scroll">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <span style="font-size: 15px; font-weight: 800; color: #ffffff;">P2P Multi-Hop Routing Table</span>
+            <button class="btn btn-sm" onclick="loadRelayRoutes()">Refresh Routes</button>
+          </div>
+
+          <table class="files-table-wrap">
+            <thead>
+              <tr>
+                <th>Target Peer</th>
+                <th>Target ID</th>
+                <th>Hops Path</th>
+                <th>Relay Type</th>
+                <th>Total Latency</th>
+                <th style="text-align: right;">Status</th>
+              </tr>
+            </thead>
+            <tbody id="relay-routes-body">
+              <!-- Populated via JS -->
+            </tbody>
+          </table>
+        </div>
       </div>
-    </footer>
+
+      <!-- Live Toast Container -->
+      <div id="toast-container" class="toast-container"></div>
+
+      <!-- Footer Status Bar -->
+      <footer class="workbench-footer">
+        <div style="display: flex; gap: 14px; align-items: center;">
+          <span>Active Node: <strong id="status-peer-name" style="color: #ffffff;">Loading...</strong></span>
+          <span>&bull;</span>
+          <span>Transport: <strong id="status-transport-tier" style="color: var(--accent-primary);">--</strong></span>
+        </div>
+        <div>
+          <span id="status-items-count">0 items</span>
+        </div>
+      </footer>
+    </main>
   </div>
 
-  <!-- Add Peer Modal -->
-  <div class="modal-overlay" id="modal-add-peer">
-    <div class="modal-box">
+  <!-- Modal 1: In-Browser Code & Text Editor -->
+  <div class="modal-overlay" id="modal-code-editor">
+    <div class="modal-box" style="width: 850px; max-width: 95vw; height: 80vh;">
       <div class="modal-top">
-        <span>Pair New Peer Node</span>
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span id="editor-filename" style="font-family: var(--font-mono); font-weight: 700; color: var(--accent-primary);">editor</span>
+          <span id="editor-status-pill" style="font-size: 10px; padding: 2px 6px; border-radius: 3px; background: var(--bg-elevated); color: var(--text-muted);">Saved</span>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-sm btn-primary" onclick="saveEditorContent()">Save (Ctrl+S)</button>
+          <button class="btn btn-sm btn-icon" onclick="closeModals()">X</button>
+        </div>
+      </div>
+      <div class="modal-main" style="flex: 1; padding: 0; display: flex; background: #000000;">
+        <textarea id="editor-textarea" style="width: 100%; height: 100%; background: #000000; border: none; outline: none; padding: 16px; font-family: var(--font-mono); font-size: 13px; color: var(--text-primary); line-height: 1.5; resize: none;" oninput="onEditorInput()" onkeydown="handleEditorShortcuts(event)" placeholder="Loading file content..."></textarea>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 2: In-Browser Media Player (Video/Audio/Image) -->
+  <div class="modal-overlay" id="modal-media-player">
+    <div class="modal-box" style="width: 750px; max-width: 95vw;">
+      <div class="modal-top">
+        <span id="media-player-title" style="font-family: var(--font-mono); font-weight: 700;">Media Stream</span>
+        <button class="btn btn-sm btn-icon" onclick="closeMediaModal()">X</button>
+      </div>
+      <div class="modal-main" style="display: flex; justify-content: center; align-items: center; background: #000000; padding: 20px; min-height: 300px;">
+        <video id="media-video" controls style="max-width: 100%; max-height: 60vh; display: none;"></video>
+        <audio id="media-audio" controls style="width: 100%; display: none;"></audio>
+        <img id="media-img" src="" alt="Preview" style="max-width: 100%; max-height: 60vh; object-fit: contain; display: none;">
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 3: Expiring Guest Share Link Generator -->
+  <div class="modal-overlay" id="modal-share-link">
+    <div class="modal-box" style="width: 440px;">
+      <div class="modal-top">
+        <span>Create Expiring Share Link</span>
         <button class="btn btn-sm btn-icon" onclick="closeModals()">X</button>
       </div>
       <div class="modal-main">
         <div class="form-field">
-          <label class="field-label">Device Name</label>
-          <input type="text" class="input-flat" id="modal-peer-name" placeholder="e.g. laptop-alice or jack-vm">
+          <label class="field-label">File to Share</label>
+          <input type="text" class="input-flat input-mono" id="share-modal-filename" readonly>
         </div>
         <div class="form-field">
-          <label class="field-label">Device ID (SHA256 Fingerprint)</label>
-          <input type="text" class="input-flat input-mono" id="modal-peer-id" placeholder="32-character hex ID">
+          <label class="field-label">Link Expiration (TTL)</label>
+          <select class="input-flat" id="share-modal-ttl">
+            <option value="15">15 Minutes</option>
+            <option value="60" selected>1 Hour</option>
+            <option value="1440">24 Hours</option>
+          </select>
         </div>
         <div class="form-field">
-          <label class="field-label">Public Key (Ed25519)</label>
-          <input type="text" class="input-flat input-mono" id="modal-peer-key" placeholder="Base64 public key">
+          <label class="field-label">Max Downloads</label>
+          <input type="number" class="input-flat input-mono" id="share-modal-limit" value="5" min="1" max="100">
         </div>
-        <div class="form-field">
-          <label class="field-label">Virtual IP</label>
-          <input type="text" class="input-flat input-mono" id="modal-peer-ip" value="10.77.0.2">
+        <div id="share-link-result" style="display: none; margin-top: 14px; background: var(--bg-elevated); border: 1px solid var(--border-default); border-radius: var(--radius-sm); padding: 12px;">
+          <div style="font-size: 11px; font-weight: 700; color: var(--accent-primary); margin-bottom: 6px;">SHAREABLE URL:</div>
+          <input type="text" class="input-flat input-mono" id="share-result-url" readonly onclick="this.select()">
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 6px;">Guest devices on your network can download without pairing.</div>
         </div>
       </div>
       <div class="modal-actions">
-        <button class="btn btn-sm" onclick="closeModals()">Cancel</button>
-        <button class="btn btn-sm btn-primary" onclick="submitAddPeer()">Authorize Peer</button>
+        <button class="btn btn-sm" onclick="closeModals()">Close</button>
+        <button class="btn btn-sm btn-primary" id="btn-generate-share" onclick="generateShareLink()">Generate Link</button>
       </div>
     </div>
   </div>
 
-  <!-- New Folder Modal -->
+  <!-- Modal 4: Add Peer Modal (Magic PIN / QR / Manual) -->
+  <div class="modal-overlay" id="modal-add-peer">
+    <div class="modal-box">
+      <div class="modal-top">
+        <span>Pair Peer Node</span>
+        <button class="btn btn-sm btn-icon" onclick="closeModals()">X</button>
+      </div>
+
+      <div style="display: flex; border-bottom: 1px solid var(--border-default); background: var(--bg-sidebar);">
+        <button class="btn btn-sm active" id="pair-tab-pin" onclick="switchPairModalTab('pin')" style="flex: 1; border-radius: 0; border: none; padding: 10px;">Magic PIN / QR</button>
+        <button class="btn btn-sm" id="pair-tab-join" onclick="switchPairModalTab('join')" style="flex: 1; border-radius: 0; border: none; padding: 10px;">Join PIN</button>
+        <button class="btn btn-sm" id="pair-tab-manual" onclick="switchPairModalTab('manual')" style="flex: 1; border-radius: 0; border: none; padding: 10px;">Manual Input</button>
+      </div>
+
+      <div class="modal-main">
+        <div id="pair-panel-pin">
+          <div style="text-align: center; padding: 14px 0;">
+            <div style="font-size: 11.5px; color: var(--text-secondary); margin-bottom: 8px; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">ENTER THIS 6-DIGIT PIN ON THE OTHER DEVICE:</div>
+            <div id="magic-pin-display" style="font-family: var(--font-mono); font-size: 32px; font-weight: 800; letter-spacing: 6px; color: var(--accent-primary); padding: 12px; background: #000000; border: 1px solid var(--border-default); border-radius: var(--radius-md); margin-bottom: 14px;">------</div>
+            <div id="magic-qr-wrap" style="display: flex; justify-content: center; margin-bottom: 12px;">
+              <img id="magic-qr-img" src="" alt="Pairing QR" style="width: 150px; height: 150px; border-radius: var(--radius-sm); border: 1px solid var(--border-default); display: none;">
+            </div>
+            <div style="font-size: 11.5px; color: var(--text-secondary);" id="magic-pin-timer">Generating session...</div>
+          </div>
+        </div>
+
+        <div id="pair-panel-join" style="display: none;">
+          <div class="form-field">
+            <label class="field-label">Enter 6-Digit PIN or QR URL</label>
+            <input type="text" class="input-flat input-mono" id="join-target-input" placeholder="e.g. 583921" autofocus>
+          </div>
+        </div>
+
+        <div id="pair-panel-manual" style="display: none;">
+          <div class="form-field">
+            <label class="field-label">Device Name</label>
+            <input type="text" class="input-flat" id="modal-peer-name" placeholder="e.g. laptop-alice">
+          </div>
+          <div class="form-field">
+            <label class="field-label">Device ID (SHA256)</label>
+            <input type="text" class="input-flat input-mono" id="modal-peer-id" placeholder="32-character hex ID">
+          </div>
+          <div class="form-field">
+            <label class="field-label">Public Key (Ed25519)</label>
+            <input type="text" class="input-flat input-mono" id="modal-peer-key" placeholder="Base64 key">
+          </div>
+          <div class="form-field">
+            <label class="field-label">Virtual IP</label>
+            <input type="text" class="input-flat input-mono" id="modal-peer-ip" value="10.77.0.2">
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn btn-sm" onclick="closeModals()">Cancel</button>
+        <button class="btn btn-sm btn-primary" id="btn-submit-pair" onclick="submitPairingAction()">Authorize</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 5: New Folder Modal -->
   <div class="modal-overlay" id="modal-new-folder">
     <div class="modal-box" style="width: 380px;">
       <div class="modal-top">
@@ -295,7 +768,7 @@
       <div class="modal-main">
         <div class="form-field">
           <label class="field-label">Folder Name</label>
-          <input type="text" class="input-flat" id="modal-folder-name" placeholder="e.g. documents, backup">
+          <input type="text" class="input-flat" id="modal-folder-name" placeholder="e.g. projects, documents">
         </div>
       </div>
       <div class="modal-actions">
@@ -305,6 +778,6 @@
     </div>
   </div>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=6"></script>
 </body>
 </html>

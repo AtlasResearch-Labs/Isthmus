@@ -32,3 +32,5 @@ Thumbs.db
 
 # Archives
 *.zip
+!dist/*.zip
+!isthmus-source.zip

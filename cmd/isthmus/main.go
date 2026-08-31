@@ -20,8 +20,13 @@ import (
 	"isthmus/pkg/fileserver"
 	"isthmus/pkg/gui"
 	"isthmus/pkg/mesh"
+	"isthmus/pkg/pairing"
+	"isthmus/pkg/runner"
 	"isthmus/pkg/service"
 	"isthmus/pkg/tui"
+	"isthmus/pkg/vault"
+	"isthmus/pkg/watcher"
+	"isthmus/pkg/webdav"
 )
 
 const version = "0.5.0-phase4"
@@ -43,13 +48,20 @@ func printUsage() {
 	fmt.Println("  gui, app              Launch dedicated Retro Windows Desktop GUI")
 	fmt.Println("  browse <peer> [path]  Browse remote files on a peer (table format)")
 	fmt.Println("  pull <peer> <remote>  Pull a file from a peer (LAN, WAN Direct, or Relay)")
-	fmt.Println("  push <peer> <local>   Push a file to a peer")
-	fmt.Println("  sync <peer> [remote]  Recursively delta-sync a folder from a peer")
-	fmt.Println("  acl <peer> <action>   Manage per-peer path access control lists")
+	fmt.Println("  push <peer> <file>    Upload a local file to a remote peer")
+	fmt.Println("  sync <peer> [dir]     Synchronize a directory bidirectionally")
+	fmt.Println("  watch [peer] [dir]    Live watch directory and auto-sync changes in real time")
+	fmt.Println("  acl <set|list>        Configure access control policies for peers")
 	fmt.Println("  mesh <sync|status>    Synchronize real-time N-device mesh tailnet")
 	fmt.Println("  service <action>      Manage headless OS service (install/start/stop)")
 	fmt.Println("  coord <set|status>    Manage coordination server connection")
 	fmt.Println("  peer <add|list|rm>    Manage configured trusted peers")
+	fmt.Println("  pair                  One-click PIN and QR code device pairing")
+	fmt.Println("  pair-code             Display a 6-digit pairing PIN and QR code")
+	fmt.Println("  pair-join <pin/qr>    Pair with another device using PIN or QR code")
+	fmt.Println("  exec [opts] <cmd>     Execute command across mesh nodes or --all")
+	fmt.Println("  vault <action>        Manage zero-trust encrypted file vault")
+	fmt.Println("  mount [drive]         Mount mesh storage as a native virtual drive letter")
 	fmt.Println("  version               Show version information")
 	fmt.Println()
 }
@@ -86,6 +98,8 @@ func main() {
 		cmdPush(os.Args[2:])
 	case "sync":
 		cmdSync(os.Args[2:])
+	case "watch":
+		cmdWatch(os.Args[2:])
 	case "acl":
 		cmdACL(os.Args[2:])
 	case "mesh":
@@ -96,6 +110,18 @@ func main() {
 		cmdCoord(os.Args[2:])
 	case "peer":
 		cmdPeer(os.Args[2:])
+	case "pair":
+		cmdPair(os.Args[2:])
+	case "pair-code":
+		cmdPairCode(os.Args[2:])
+	case "pair-join":
+		cmdPairJoin(os.Args[2:])
+	case "exec":
+		cmdExec(os.Args[2:])
+	case "vault":
+		cmdVault(os.Args[2:])
+	case "mount":
+		cmdMount(os.Args[2:])
 	case "version":
 		fmt.Printf("Isthmus version %s\n", version)
 	case "help", "-h", "--help":
@@ -591,8 +617,70 @@ func cmdSync(args []string) {
 		os.Exit(1)
 	}
 
-	logger.Info("Folder sync complete. %d downloaded, %d skipped, %s in %v",
+	logger.Info("Sync completed. %d files downloaded, %d skipped, %s in %v",
 		stats.FilesDownloaded, stats.FilesSkipped, fileserver.FormatBytes(stats.BytesTransferred), stats.Duration)
+}
+
+func cmdWatch(args []string) {
+	cfg, err := config.LoadConfig("")
+	if err != nil {
+		logger.Error("Please run 'isthmus init' first.")
+		os.Exit(1)
+	}
+
+	watchDir := cfg.SharedDir
+	if len(args) >= 2 {
+		watchDir = args[1]
+	}
+
+	fw, err := watcher.NewFolderWatcher(watchDir, watcher.Options{
+		DebounceDelay: 500 * time.Millisecond,
+	})
+	if err != nil {
+		logger.Error("Failed to initialize folder watcher: %v", err)
+		os.Exit(1)
+	}
+
+	var targetPeer string
+	if len(args) >= 1 {
+		targetPeer = args[0]
+	}
+
+	fw.OnChange(func(we watcher.WatchEvent) {
+		logger.Info("[%s] %s (%s)", we.Type, we.RelPath, we.Timestamp.Format("15:04:05"))
+		if targetPeer != "" {
+			client, _, err := connectViaRouter(targetPeer)
+			if err == nil {
+				defer client.Close()
+				if we.Type == watcher.EventCreate || we.Type == watcher.EventModify {
+					_ = client.PushFile(we.Path, we.RelPath, nil)
+				} else if we.Type == watcher.EventDelete {
+					_ = client.Remove(we.RelPath)
+				}
+			}
+		}
+	})
+
+	if err := fw.Start(); err != nil {
+		logger.Error("Failed to start watcher: %v", err)
+		os.Exit(1)
+	}
+	defer fw.Stop()
+
+	fmt.Println()
+	fmt.Println(tui.RetroTitleBar("REAL-TIME CONTINUOUS FILE WATCHER & AUTO-SYNC", 78))
+	fmt.Printf("  Directory:   %s\n", watchDir)
+	if targetPeer != "" {
+		fmt.Printf("  Target Peer: %s (Auto-Syncing on save)\n", targetPeer)
+	} else {
+		fmt.Printf("  Target Peer: Local change monitor\n")
+	}
+	fmt.Println("  Press Ctrl+C to terminate...")
+	fmt.Println()
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	<-sigChan
 }
 
 func cmdACL(args []string) {
@@ -874,7 +962,93 @@ func cmdPeer(args []string) {
 			return
 		}
 		logger.Info("Removed peer %s", args[1])
+	default:
+		fmt.Println("Usage: isthmus peer <list|add|remove> [args...]")
 	}
+}
+
+func cmdPair(args []string) {
+	if len(args) == 0 || args[0] == "code" {
+		cmdPairCode(args)
+		return
+	}
+	if args[0] == "join" {
+		cmdPairJoin(args[1:])
+		return
+	}
+	cmdPairJoin(args)
+}
+
+func cmdPairCode(args []string) {
+	cfg, err := config.LoadConfig("")
+	if err != nil {
+		logger.Error("Please run 'isthmus init' first.")
+		os.Exit(1)
+	}
+
+	mgr := pairing.NewManager()
+	session, err := mgr.GenerateSession(cfg, "", 3*time.Minute)
+	if err != nil {
+		logger.Error("Failed to generate pairing session: %v", err)
+		os.Exit(1)
+	}
+	defer session.Close()
+
+	fmt.Println()
+	fmt.Println(tui.RetroTitleBar("ONE-CLICK MAGIC PAIRING", 78))
+	fmt.Printf("  6-Digit PIN:       \033[1;34m%s\033[0m\n", session.PIN)
+	fmt.Printf("  Expires In:        3 minutes\n")
+	fmt.Printf("  QR URL:            %s\n", session.QRURL)
+	fmt.Println()
+	if session.ASCIIQR != "" {
+		fmt.Println("  Scan with phone camera or mobile Isthmus app:")
+		fmt.Println(session.ASCIIQR)
+	}
+	fmt.Println()
+	fmt.Printf("  Run on other device: isthmus pair-join %s\n", session.PIN)
+	fmt.Println("  Waiting for other device to connect (Press Ctrl+C to cancel)...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+
+	peer, err := mgr.WaitForPairing(ctx, session)
+	if err != nil {
+		logger.Error("Pairing failed or timed out: %v", err)
+		return
+	}
+
+	fmt.Println()
+	logger.Info("Successfully paired with '%s' (%s)!", peer.DeviceName, peer.DeviceID)
+	logger.Info("Device added to trusted peer directory. Virtual IP: %s", peer.VirtualIP)
+}
+
+func cmdPairJoin(args []string) {
+	if len(args) < 1 {
+		fmt.Println("Usage: isthmus pair-join <6-digit-pin-or-qr-url>")
+		return
+	}
+	target := args[0]
+
+	cfg, err := config.LoadConfig("")
+	if err != nil {
+		logger.Error("Please run 'isthmus init' first.")
+		os.Exit(1)
+	}
+
+	mgr := pairing.NewManager()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	logger.Info("Attempting one-click handshake with '%s'...", target)
+	peer, err := mgr.JoinPairing(ctx, cfg, target)
+	if err != nil {
+		logger.Error("Failed to pair: %v", err)
+		os.Exit(1)
+	}
+
+	fmt.Println()
+	logger.Info("Successfully paired with '%s' (%s)!", peer.DeviceName, peer.DeviceID)
+	logger.Info("Device added to trusted peer directory. Virtual IP: %s", peer.VirtualIP)
 }
 
 func cmdGUI(args []string) {
@@ -920,4 +1094,139 @@ func openBrowser(url string) {
 	}
 	_ = cmd.Start()
 }
+
+func cmdExec(args []string) {
+	fs := flag.NewFlagSet("exec", flag.ExitOnError)
+	target := fs.String("target", "local", "Target peer ID or 'all' for all mesh nodes")
+	allNodes := fs.Bool("all", false, "Execute across all mesh nodes simultaneously")
+	timeout := fs.Int("timeout", 10, "Command timeout in seconds")
+	fs.Parse(args)
+
+	cmdArgs := fs.Args()
+	if len(cmdArgs) == 0 {
+		fmt.Println("Usage: isthmus exec [--target=<peer>|--all] \"<command>\"")
+		os.Exit(1)
+	}
+
+	commandStr := strings.Join(cmdArgs, " ")
+
+	cfg, err := config.LoadConfig("")
+	if err != nil {
+		logger.Error("Please run 'isthmus init' first: %v", err)
+		os.Exit(1)
+	}
+
+	disp := runner.NewDispatcher(cfg)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(*timeout)*time.Second)
+	defer cancel()
+
+	targets := []string{*target}
+	if *allNodes {
+		targets = []string{"all"}
+	}
+
+	fmt.Printf("[RUNNER] Dispatching '%s' across target(s): %v\n\n", commandStr, targets)
+	batch := disp.DispatchJob(ctx, commandStr, targets)
+
+	for _, r := range batch.Results {
+		fmt.Printf("=== Node: %s (%s) [Exit Code: %d, Runtime: %.2f ms] ===\n", r.TargetName, r.TargetID, r.ExitCode, r.DurationMs)
+		if r.Stdout != "" {
+			fmt.Print(r.Stdout)
+			if !strings.HasSuffix(r.Stdout, "\n") {
+				fmt.Println()
+			}
+		}
+		if r.Error != "" {
+			fmt.Printf("[ERROR] %s\n", r.Error)
+		}
+		fmt.Println()
+	}
+}
+
+func cmdVault(args []string) {
+	if len(args) == 0 {
+		fmt.Println("Usage: isthmus vault <status|encrypt|decrypt|lock|unlock> [file] [passphrase]")
+		os.Exit(0)
+	}
+
+	cfg, err := config.LoadConfig("")
+	if err != nil {
+		logger.Error("Please run 'isthmus init' first: %v", err)
+		os.Exit(1)
+	}
+
+	vm := vault.NewManager(cfg.SharedDir)
+	subcmd := args[0]
+
+	switch subcmd {
+	case "status":
+		st := vm.Status()
+		fmt.Printf("=== Isthmus Zero-Trust Encrypted Vault ===\n")
+		fmt.Printf("Directory:       %s\n", st.VaultDirectory)
+		fmt.Printf("Encrypted Files: %d\n", st.EncryptedFiles)
+		fmt.Printf("Lock State:      %v\n", map[bool]string{true: "UNLOCKED", false: "LOCKED"}[st.Unlocked])
+
+	case "encrypt":
+		if len(args) < 3 {
+			fmt.Println("Usage: isthmus vault encrypt <src-file> <passphrase>")
+			os.Exit(1)
+		}
+		srcFile := args[1]
+		pass := args[2]
+		dstFile := filepath.Join(cfg.SharedDir, "Vault", filepath.Base(srcFile)+".enc")
+		if err := vm.EncryptFile(srcFile, dstFile, pass); err != nil {
+			logger.Error("Encryption failed: %v", err)
+			os.Exit(1)
+		}
+		fmt.Printf("[VAULT OK] Encrypted '%s' -> '%s' (AES-256-GCM)\n", srcFile, dstFile)
+
+	case "decrypt":
+		if len(args) < 3 {
+			fmt.Println("Usage: isthmus vault decrypt <enc-file> <passphrase>")
+			os.Exit(1)
+		}
+		encFile := args[1]
+		pass := args[2]
+		cleanName := strings.TrimSuffix(filepath.Base(encFile), ".enc")
+		dstFile := filepath.Join(cfg.SharedDir, cleanName)
+		if err := vm.DecryptFile(encFile, dstFile, pass); err != nil {
+			logger.Error("Decryption failed: %v", err)
+			os.Exit(1)
+		}
+		fmt.Printf("[VAULT OK] Decrypted '%s' -> '%s'\n", encFile, dstFile)
+
+	case "unlock":
+		if len(args) < 2 {
+			fmt.Println("Usage: isthmus vault unlock <passphrase> [minutes]")
+			os.Exit(1)
+		}
+		pass := args[1]
+		if err := vm.Unlock(pass, 30); err != nil {
+			logger.Error("Unlock failed: %v", err)
+			os.Exit(1)
+		}
+		fmt.Println("[VAULT OK] Vault unlocked for 30 minutes.")
+
+	case "lock":
+		vm.Lock()
+		fmt.Println("[VAULT OK] Vault locked. Master keys wiped from memory.")
+
+	default:
+		fmt.Printf("Unknown vault action: %s\n", subcmd)
+	}
+}
+
+func cmdMount(args []string) {
+	drive := "Z:"
+	if len(args) > 0 {
+		drive = args[0]
+	}
+
+	cmdStr := webdav.MountCommand(7788, drive)
+	fmt.Println("=== Isthmus Virtual Drive Mount ===")
+	fmt.Printf("To mount your mesh storage as native drive '%s', run this command:\n\n", drive)
+	fmt.Printf("  %s\n\n", cmdStr)
+	fmt.Println("Ensure the Isthmus GUI or daemon is running on port 7788.")
+}
+
 

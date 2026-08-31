@@ -1,0 +1,15 @@
+[Unit]
+Description=Isthmus Cross-Device Secure Mesh Daemon
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/bin/isthmus daemon
+Restart=on-failure
+RestartSec=5s
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

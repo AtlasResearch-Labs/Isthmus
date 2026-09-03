@@ -23,13 +23,14 @@ import (
 )
 
 type ServerConfig struct {
-	Port         int
-	RootDir      string
-	HostKeyPEM   []byte
-	AuthPassword string
-	AllowedKeys  []string
-	NoClientAuth bool
-	ReadOnly     bool
+	Port            int
+	RootDir         string
+	HostKeyPEM      []byte
+	AuthPassword    string
+	AllowedKeys     []string
+	AllowedKeysFunc func() []string
+	NoClientAuth    bool
+	ReadOnly        bool
 }
 
 type Server struct {
@@ -48,11 +49,11 @@ func generateDefaultHostKey() ([]byte, error) {
 		return nil, err
 	}
 
-	keyPEM := pem.EncodeToMemory(&pem.Block{
+	pemBlock := &pem.Block{
 		Type:  "RSA PRIVATE KEY",
 		Bytes: x509.MarshalPKCS1PrivateKey(key),
-	})
-	return keyPEM, nil
+	}
+	return pem.EncodeToMemory(pemBlock), nil
 }
 
 func NewServer(cfg ServerConfig) (*Server, error) {
@@ -70,7 +71,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		return nil, fmt.Errorf("failed to create root directory: %w", err)
 	}
 
-	if len(cfg.HostKeyPEM) == 0 {
+	if cfg.HostKeyPEM == nil {
 		hostKey, err := generateDefaultHostKey()
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate host key: %w", err)
@@ -85,11 +86,17 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 
 	sshConfig := &ssh.ServerConfig{}
 
-	if len(cfg.AllowedKeys) > 0 {
+	if len(cfg.AllowedKeys) > 0 || cfg.AllowedKeysFunc != nil {
 		sshConfig.NoClientAuth = false
 		sshConfig.PublicKeyCallback = func(c ssh.ConnMetadata, pubKey ssh.PublicKey) (*ssh.Permissions, error) {
 			clientPubKeyBytes := pubKey.Marshal()
-			for _, allowed := range cfg.AllowedKeys {
+			allowedList := cfg.AllowedKeys
+			if cfg.AllowedKeysFunc != nil {
+				if dyn := cfg.AllowedKeysFunc(); len(dyn) > 0 {
+					allowedList = dyn
+				}
+			}
+			for _, allowed := range allowedList {
 				trimmed := strings.TrimSpace(allowed)
 				if trimmed == "" {
 					continue

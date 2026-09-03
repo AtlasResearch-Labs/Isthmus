@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net"
 	"os"
 	"os/signal"
 	"os/exec"
@@ -46,10 +47,10 @@ func printUsage() {
 	fmt.Println("  daemon                Run persistent background node service with WAN sync")
 	fmt.Println("  ui <peer> [path]      Open Retro Windows interactive TUI file explorer")
 	fmt.Println("  gui, app              Launch dedicated Retro Windows Desktop GUI")
-	fmt.Println("  browse <peer> [path]  Browse remote files on a peer (table format)")
-	fmt.Println("  pull <peer> <remote>  Pull a file from a peer (LAN, WAN Direct, or Relay)")
-	fmt.Println("  push <peer> <file>    Upload a local file to a remote peer")
-	fmt.Println("  sync <peer> [dir]     Synchronize a directory bidirectionally")
+	fmt.Println("  browse <peer> [path]  Browse remote files on a peer [--at <endpoint>]")
+	fmt.Println("  pull <peer> <remote>  Pull a file from a peer [--at <endpoint>] [--limit-rate <rate>]")
+	fmt.Println("  push <peer> <file>    Upload a local file to a peer [--at <endpoint>] [--limit-rate <rate>]")
+	fmt.Println("  sync <peer> [dir]     Synchronize a directory bidirectionally [--at <endpoint>]")
 	fmt.Println("  watch [peer] [dir]    Live watch directory and auto-sync changes in real time")
 	fmt.Println("  acl <set|list>        Configure access control policies for peers")
 	fmt.Println("  mesh <sync|status>    Synchronize real-time N-device mesh tailnet")
@@ -306,6 +307,19 @@ func runServerLoop(args []string, isDaemon bool) {
 		Port:        cfg.SFTPPort,
 		RootDir:     cfg.SharedDir,
 		AllowedKeys: allowedKeys,
+		AllowedKeysFunc: func() []string {
+			latestCfg, err := config.LoadConfig("")
+			if err != nil {
+				return allowedKeys
+			}
+			var keys []string
+			for _, peer := range latestCfg.Peers {
+				if peer.Allowed && peer.PublicKey != "" {
+					keys = append(keys, peer.PublicKey)
+				}
+			}
+			return keys
+		},
 	})
 	if err != nil {
 		logger.Error("Failed to create SFTP server: %v", err)
@@ -367,10 +381,28 @@ func runServerLoop(args []string, isDaemon bool) {
 	logger.Info("Shutting down Isthmus node...")
 }
 
-func connectViaRouter(target string) (*fileserver.Client, string, error) {
+func connectViaRouter(target string, directEndpoint ...string) (*fileserver.Client, string, error) {
 	cfg, err := config.LoadConfig("")
 	if err != nil {
 		return nil, "", fmt.Errorf("please run 'isthmus init' first: %w", err)
+	}
+
+	if len(directEndpoint) > 0 && directEndpoint[0] != "" {
+		endpoint := directEndpoint[0]
+		logger.Info("Bypassing router, connecting directly to %s...", endpoint)
+		conn, err := net.DialTimeout("tcp", endpoint, 8*time.Second)
+		if err != nil {
+			return nil, "", fmt.Errorf("direct connection to %s failed: %w", endpoint, err)
+		}
+		client, err := fileserver.NewClientFromConn(conn, fileserver.ClientConfig{
+			Endpoint:   endpoint,
+			PrivateKey: cfg.PrivateKey,
+		})
+		if err != nil {
+			conn.Close()
+			return nil, "", fmt.Errorf("SFTP handshake with %s failed: %w", endpoint, err)
+		}
+		return client, "Direct Endpoint", nil
 	}
 
 	router := discovery.NewAutoRouter(cfg)
@@ -419,19 +451,42 @@ func cmdUI(args []string) {
 	}
 }
 
+func reorderFlags(args []string) []string {
+	var flags []string
+	var positionals []string
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if strings.HasPrefix(arg, "-") {
+			flags = append(flags, arg)
+			if !strings.Contains(arg, "=") && i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+				flags = append(flags, args[i+1])
+				i++
+			}
+		} else {
+			positionals = append(positionals, arg)
+		}
+	}
+	return append(flags, positionals...)
+}
+
 func cmdBrowse(args []string) {
-	if len(args) < 1 {
-		fmt.Println("Usage: isthmus browse <peer-name-or-endpoint> [remote-path]")
+	fs := flag.NewFlagSet("browse", flag.ExitOnError)
+	atEndpoint := fs.String("at", "", "Direct peer endpoint (e.g. 192.168.1.6:2222)")
+	fs.Parse(reorderFlags(args))
+
+	remain := fs.Args()
+	if len(remain) < 1 {
+		fmt.Println("Usage: isthmus browse [--at <endpoint>] <peer-name-or-endpoint> [remote-path]")
 		return
 	}
 
-	peerTarget := args[0]
+	peerTarget := remain[0]
 	remotePath := "."
-	if len(args) >= 2 {
-		remotePath = args[1]
+	if len(remain) >= 2 {
+		remotePath = remain[1]
 	}
 
-	client, tier, err := connectViaRouter(peerTarget)
+	client, tier, err := connectViaRouter(peerTarget, *atEndpoint)
 	if err != nil {
 		logger.Error("Connection to '%s' failed: %v", peerTarget, err)
 		os.Exit(1)
@@ -469,11 +524,12 @@ func cmdBrowse(args []string) {
 func cmdPull(args []string) {
 	fs := flag.NewFlagSet("pull", flag.ExitOnError)
 	limitRate := fs.String("limit-rate", "", "Limit transfer speed (e.g. 500k, 2M, 10M)")
-	fs.Parse(args)
+	atEndpoint := fs.String("at", "", "Direct peer endpoint (e.g. 192.168.1.6:2222)")
+	fs.Parse(reorderFlags(args))
 
 	remain := fs.Args()
 	if len(remain) < 2 {
-		fmt.Println("Usage: isthmus pull [--limit-rate <rate>] <peer> <remote-file> [local-destination]")
+		fmt.Println("Usage: isthmus pull [--at <endpoint>] [--limit-rate <rate>] <peer> <remote-file> [local-destination]")
 		os.Exit(1)
 	}
 
@@ -484,7 +540,7 @@ func cmdPull(args []string) {
 		localDest = remain[2]
 	}
 
-	client, tier, err := connectViaRouter(peerTarget)
+	client, tier, err := connectViaRouter(peerTarget, *atEndpoint)
 	if err != nil {
 		logger.Error("Connection to '%s' failed: %v", peerTarget, err)
 		os.Exit(1)
@@ -522,11 +578,12 @@ func cmdPull(args []string) {
 func cmdPush(args []string) {
 	fs := flag.NewFlagSet("push", flag.ExitOnError)
 	limitRate := fs.String("limit-rate", "", "Limit transfer speed (e.g. 500k, 2M, 10M)")
-	fs.Parse(args)
+	atEndpoint := fs.String("at", "", "Direct peer endpoint (e.g. 192.168.1.6:2222)")
+	fs.Parse(reorderFlags(args))
 
 	remain := fs.Args()
 	if len(remain) < 2 {
-		fmt.Println("Usage: isthmus push [--limit-rate <rate>] <peer> <local-file> [remote-destination]")
+		fmt.Println("Usage: isthmus push [--at <endpoint>] [--limit-rate <rate>] <peer> <local-file> [remote-destination]")
 		os.Exit(1)
 	}
 
@@ -537,7 +594,7 @@ func cmdPush(args []string) {
 		remoteDest = remain[2]
 	}
 
-	client, tier, err := connectViaRouter(peerTarget)
+	client, tier, err := connectViaRouter(peerTarget, *atEndpoint)
 	if err != nil {
 		logger.Error("Connection to '%s' failed: %v", peerTarget, err)
 		os.Exit(1)
@@ -555,7 +612,7 @@ func cmdPush(args []string) {
 	logger.Info("Starting upload: %s -> %s", localFile, remoteDest)
 
 	lastReport := time.Now()
-	err = client.PushFile(localFile, remoteDest, func(transferred, total int64, speed float64) {
+	checksum, err := client.PushFileResume(localFile, remoteDest, func(transferred, total int64, speed float64) {
 		if time.Since(lastReport) >= 200*time.Millisecond || transferred == total {
 			bar := fileserver.RenderProgressBar(transferred, total, speed, 25)
 			fmt.Printf("\r%s", bar)
@@ -569,19 +626,24 @@ func cmdPush(args []string) {
 		os.Exit(1)
 	}
 
-	logger.Info("Push complete.")
+	logger.Info("Push complete. SHA256 checksum: %s", checksum)
 }
 
 func cmdSync(args []string) {
-	if len(args) < 1 {
-		fmt.Println("Usage: isthmus sync <peer> [remote-dir] [local-dir]")
+	fs := flag.NewFlagSet("sync", flag.ExitOnError)
+	atEndpoint := fs.String("at", "", "Direct peer endpoint (e.g. 192.168.1.6:2222)")
+	fs.Parse(reorderFlags(args))
+
+	remain := fs.Args()
+	if len(remain) < 1 {
+		fmt.Println("Usage: isthmus sync [--at <endpoint>] <peer> [remote-dir] [local-dir]")
 		os.Exit(1)
 	}
 
-	peerTarget := args[0]
+	peerTarget := remain[0]
 	remoteDir := ""
-	if len(args) >= 2 {
-		remoteDir = args[1]
+	if len(remain) >= 2 {
+		remoteDir = remain[1]
 	}
 
 	cfg, _ := config.LoadConfig("")
@@ -589,11 +651,11 @@ func cmdSync(args []string) {
 	if cfg != nil && cfg.SharedDir != "" {
 		localDir = cfg.SharedDir
 	}
-	if len(args) >= 3 {
-		localDir = args[2]
+	if len(remain) >= 3 {
+		localDir = remain[2]
 	}
 
-	client, tier, err := connectViaRouter(peerTarget)
+	client, tier, err := connectViaRouter(peerTarget, *atEndpoint)
 	if err != nil {
 		logger.Error("Connection to '%s' failed: %v", peerTarget, err)
 		os.Exit(1)

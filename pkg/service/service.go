@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -56,19 +57,38 @@ func (m *Manager) Install(binPath, sharedDir string) error {
 		}
 		return nil
 	} else if runtime.GOOS == "linux" {
+		var userDirectives string
+		sudoUser := os.Getenv("SUDO_USER")
+		if sudoUser != "" && sudoUser != "root" {
+			homeDir := "/home/" + sudoUser
+			group := sudoUser
+			if u, err := user.Lookup(sudoUser); err == nil {
+				if u.HomeDir != "" {
+					homeDir = u.HomeDir
+				}
+				if g, err := user.LookupGroupId(u.Gid); err == nil && g.Name != "" {
+					group = g.Name
+				}
+			}
+			userDirectives = fmt.Sprintf("User=%s\nGroup=%s\nEnvironment=HOME=%s\nEnvironment=XDG_CONFIG_HOME=%s/.config\n",
+				sudoUser, group, homeDir, homeDir)
+		}
+
 		unitContent := fmt.Sprintf(`[Unit]
 Description=%s
-After=network.target
+After=network.target network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=%s daemon
-Restart=on-failure
-RestartSec=5s
+%sExecStart=%s daemon
+Restart=always
+RestartSec=3s
+LimitNOFILE=65536
 
 [Install]
 WantedBy=multi-user.target
-`, m.Description, absBin)
+`, m.Description, userDirectives, absBin)
 
 		unitPath := "/etc/systemd/system/isthmus.service"
 		if err := os.WriteFile(unitPath, []byte(unitContent), 0644); err != nil {

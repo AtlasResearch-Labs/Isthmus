@@ -271,26 +271,58 @@ func computeFileSHA256(filePath string) (string, error) {
 }
 
 func (c *Client) PushFile(localPath, remotePath string, onProgress ProgressCallback) error {
+	_, err := c.PushFileResume(localPath, remotePath, onProgress)
+	return err
+}
+
+func (c *Client) PushFileResume(localPath, remotePath string, onProgress ProgressCallback) (string, error) {
 	localFile, err := os.Open(localPath)
 	if err != nil {
-		return fmt.Errorf("failed to open local file %s: %w", localPath, err)
+		return "", fmt.Errorf("failed to open local file %s: %w", localPath, err)
 	}
 	defer localFile.Close()
 
 	stat, err := localFile.Stat()
 	if err != nil {
-		return fmt.Errorf("failed to stat local file: %w", err)
+		return "", fmt.Errorf("failed to stat local file: %w", err)
 	}
 	totalSize := stat.Size()
 
-	remoteFile, err := c.sftpClient.Create(remotePath)
-	if err != nil {
-		return fmt.Errorf("failed to create remote file %s: %w", remotePath, err)
+	var existingOffset int64
+	var remoteFile *sftp.File
+
+	// Attempt resume if partial remote file exists
+	if rStat, err := c.sftpClient.Stat(remotePath); err == nil {
+		if rStat.Size() < totalSize && rStat.Size() > 0 {
+			existingOffset = rStat.Size()
+			rf, err := c.sftpClient.OpenFile(remotePath, os.O_WRONLY|os.O_APPEND)
+			if err != nil {
+				existingOffset = 0
+			} else {
+				remoteFile = rf
+				if _, err := localFile.Seek(existingOffset, io.SeekStart); err != nil {
+					remoteFile.Close()
+					remoteFile = nil
+					existingOffset = 0
+					_, _ = localFile.Seek(0, io.SeekStart)
+				}
+			}
+		}
+	}
+
+	if remoteFile == nil {
+		rf, err := c.sftpClient.Create(remotePath)
+		if err != nil {
+			return "", fmt.Errorf("failed to create remote file %s: %w", remotePath, err)
+		}
+		remoteFile = rf
+		existingOffset = 0
+		_, _ = localFile.Seek(0, io.SeekStart)
 	}
 	defer remoteFile.Close()
 
 	buf := make([]byte, 128*1024)
-	var transferred int64
+	transferred := existingOffset
 	startTime := time.Now()
 
 	for {
@@ -298,7 +330,7 @@ func (c *Client) PushFile(localPath, remotePath string, onProgress ProgressCallb
 		if n > 0 {
 			written, writeErr := remoteFile.Write(buf[:n])
 			if writeErr != nil {
-				return fmt.Errorf("remote write error: %w", writeErr)
+				return "", fmt.Errorf("remote write error: %w", writeErr)
 			}
 			transferred += int64(written)
 
@@ -306,7 +338,7 @@ func (c *Client) PushFile(localPath, remotePath string, onProgress ProgressCallb
 				elapsed := time.Since(startTime).Seconds()
 				var speed float64
 				if elapsed > 0 {
-					speed = float64(transferred) / elapsed
+					speed = float64(transferred-existingOffset) / elapsed
 				}
 				onProgress(transferred, totalSize, speed)
 			}
@@ -315,11 +347,16 @@ func (c *Client) PushFile(localPath, remotePath string, onProgress ProgressCallb
 			break
 		}
 		if readErr != nil {
-			return fmt.Errorf("local read error: %w", readErr)
+			return "", fmt.Errorf("local read error: %w", readErr)
 		}
 	}
 
-	return nil
+	checksum, err := computeFileSHA256(localPath)
+	if err != nil {
+		return "", fmt.Errorf("checksum calculation error: %w", err)
+	}
+
+	return checksum, nil
 }
 
 func (c *Client) Remove(path string) error {

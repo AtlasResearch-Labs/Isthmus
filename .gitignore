@@ -5,6 +5,7 @@ bin/
 *.dll
 *.so
 *.dylib
+*.apk
 
 # Test outputs and logs
 *.test

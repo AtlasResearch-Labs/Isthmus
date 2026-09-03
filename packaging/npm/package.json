@@ -1,0 +1,29 @@
+{
+  "name": "isthmus",
+  "version": "0.5.0",
+  "description": "Cross-Device Zero-Trust Secure Tunnel and Distributed Mesh File System",
+  "main": "bin/run.js",
+  "bin": {
+    "isthmus": "bin/run.js"
+  },
+  "files": [
+    "bin/"
+  ],
+  "keywords": [
+    "mesh",
+    "p2p",
+    "sftp",
+    "vpn",
+    "wireguard",
+    "zerotier",
+    "tailscale",
+    "file-sharing",
+    "sync"
+  ],
+  "author": "Atlas Research Labs",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AtlasResearch-Labs/Isthmus.git"
+  }
+}

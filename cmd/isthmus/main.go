@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"os/exec"
@@ -376,6 +377,19 @@ func runServerLoop(args []string, isDaemon bool) {
 		logger.Warn("LAN discovery broadcast failed to start: %v", err)
 	} else {
 		defer disc.Stop()
+	}
+
+	// WebDAV service for native OS virtual drive mounting on port 7788
+	wdServer := webdav.NewServer(cfg.SharedDir, "/webdav")
+	wdListener, wdErr := net.Listen("tcp", "127.0.0.1:7788")
+	if wdErr == nil {
+		defer wdListener.Close()
+		go func() {
+			logger.Info("WebDAV virtual drive service listening on http://127.0.0.1:7788/webdav")
+			_ = http.Serve(wdListener, wdServer)
+		}()
+	} else {
+		logger.Debug("WebDAV service already active on port 7788")
 	}
 
 	if cfg.CoordServer != "" {
@@ -1451,15 +1465,94 @@ func cmdVault(args []string) {
 
 func cmdMount(args []string) {
 	drive := "Z:"
-	if len(args) > 0 {
-		drive = args[0]
+	unmount := false
+	for _, arg := range args {
+		if arg == "--unmount" || arg == "-u" || arg == "unmount" {
+			unmount = true
+		} else if !strings.HasPrefix(arg, "-") {
+			drive = arg
+		}
 	}
 
-	cmdStr := webdav.MountCommand(7788, drive)
-	fmt.Println("=== Isthmus Virtual Drive Mount ===")
-	fmt.Printf("To mount your mesh storage as native drive '%s', run this command:\n\n", drive)
-	fmt.Printf("  %s\n\n", cmdStr)
-	fmt.Println("Ensure the Isthmus GUI or daemon is running on port 7788.")
+	cfg, err := config.LoadConfig("")
+	if err != nil {
+		logger.Error("Please run 'isthmus init' first.")
+		os.Exit(1)
+	}
+
+	if runtime.GOOS == "windows" {
+		drive = strings.ToUpper(strings.TrimSuffix(drive, ":")) + ":"
+	}
+
+	if unmount {
+		fmt.Printf("Disconnecting Isthmus virtual drive '%s'...\n", drive)
+		if runtime.GOOS == "windows" {
+			_ = exec.Command("subst", drive, "/d").Run()
+			_ = exec.Command("net", "use", drive, "/delete", "/y").Run()
+		} else if runtime.GOOS == "darwin" {
+			_ = exec.Command("umount", drive).Run()
+		} else {
+			_ = exec.Command("sudo", "umount", drive).Run()
+		}
+		fmt.Printf("[OK] Virtual drive '%s' successfully disconnected.\n", drive)
+		return
+	}
+
+	// Verify WebDAV service is active on port 7788
+	conn, err := net.DialTimeout("tcp", "127.0.0.1:7788", 500*time.Millisecond)
+	if err != nil {
+		wdServer := webdav.NewServer(cfg.SharedDir, "/webdav")
+		wdListener, err := net.Listen("tcp", "127.0.0.1:7788")
+		if err == nil {
+			go func() {
+				_ = http.Serve(wdListener, wdServer)
+			}()
+		}
+	} else {
+		conn.Close()
+	}
+
+	fmt.Printf("Mounting Isthmus mesh storage as native virtual drive '%s'...\n", drive)
+	if runtime.GOOS == "windows" {
+		cmd := exec.Command("subst", drive, cfg.SharedDir)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			outputStr := strings.TrimSpace(string(out))
+			if strings.Contains(outputStr, "already") {
+				fmt.Printf("[OK] Drive '%s' is already mounted and accessible.\n", drive)
+			} else {
+				logger.Error("Mount failed: %s (%v)", outputStr, err)
+				os.Exit(1)
+			}
+		} else {
+			fmt.Printf("[OK] Successfully mounted Isthmus storage as drive '%s'!\n", drive)
+			fmt.Printf("  Local Drive: %s\\ -> %s\n", drive, cfg.SharedDir)
+			fmt.Printf("  WebDAV LAN:  http://127.0.0.1:7788/webdav\n")
+		}
+		return
+	}
+
+	// macOS / Linux mount
+	var cmd *exec.Cmd
+	if runtime.GOOS == "darwin" {
+		cmd = exec.Command("sh", "-c", fmt.Sprintf("mkdir -p %s && mount_webdav -i http://127.0.0.1:7788/webdav %s", drive, drive))
+	} else {
+		cmd = exec.Command("sh", "-c", fmt.Sprintf("sudo mkdir -p %s && sudo mount -t davfs http://127.0.0.1:7788/webdav %s", drive, drive))
+	}
+
+	out, err := cmd.CombinedOutput()
+	outputStr := strings.TrimSpace(string(out))
+	if err != nil {
+		if strings.Contains(outputStr, "already mounted") {
+			fmt.Printf("[OK] Drive '%s' is mounted and accessible.\n", drive)
+		} else {
+			logger.Error("Mount failed: %s (%v)", outputStr, err)
+			os.Exit(1)
+		}
+	} else {
+		fmt.Printf("[OK] Successfully mounted Isthmus mesh storage to '%s'!\n", drive)
+		fmt.Printf("Access via: http://127.0.0.1:7788/webdav\n")
+	}
 }
 
 

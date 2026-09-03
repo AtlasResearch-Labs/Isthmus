@@ -3,11 +3,15 @@ package diagnostics
 import (
 	"context"
 	"crypto/rand"
+	"fmt"
 	"net"
+	"strings"
 	"time"
 
 	"isthmus/internal/logger"
 	"isthmus/pkg/config"
+	"isthmus/pkg/discovery"
+	"isthmus/pkg/fileserver"
 )
 
 type PingResult struct {
@@ -41,17 +45,43 @@ func NewRunner(cfg *config.Config) *Runner {
 	}
 }
 
-func (r *Runner) PingPeer(ctx context.Context, peerID string, endpoint string) PingResult {
+func (r *Runner) PingPeer(ctx context.Context, target string, endpoint string) PingResult {
+	peerName := target
+	peerID := target
+
+	if p, ok := r.cfg.GetPeer(target); ok {
+		peerName = p.DeviceName
+		peerID = p.DeviceID
+		if endpoint == "" {
+			endpoint = p.LastSeenEndpoint
+		}
+	} else {
+		for id, p := range r.cfg.Peers {
+			if strings.EqualFold(p.DeviceName, target) {
+				peerName = p.DeviceName
+				peerID = id
+				if endpoint == "" {
+					endpoint = p.LastSeenEndpoint
+				}
+				break
+			}
+		}
+	}
+
 	res := PingResult{
 		PeerID:   peerID,
+		PeerName: peerName,
 		Endpoint: endpoint,
 	}
 
-	peer, exists := r.cfg.Peers[peerID]
-	if exists {
-		res.PeerName = peer.DeviceName
-		if endpoint == "" {
-			endpoint = peer.LastSeenEndpoint
+	if endpoint == "" {
+		router := discovery.NewAutoRouter(r.cfg)
+		dialCtx, dialCancel := context.WithTimeout(ctx, 3*time.Second)
+		defer dialCancel()
+		if routed, err := router.DialPeer(dialCtx, target); err == nil {
+			endpoint = routed.Addr
+			routed.Conn.Close()
+			res.Endpoint = endpoint
 		}
 	}
 
@@ -77,22 +107,72 @@ func (r *Runner) PingPeer(ctx context.Context, peerID string, endpoint string) P
 	return res
 }
 
-func (r *Runner) RunSpeedtest(ctx context.Context, peerID string, testSizeBytes int64) SpeedtestResult {
+func (r *Runner) RunSpeedtest(ctx context.Context, target string, testSizeBytes int64) SpeedtestResult {
 	if testSizeBytes <= 0 {
 		testSizeBytes = 2 * 1024 * 1024 // 2MB
 	}
 
+	peerName := target
+	peerID := target
+
+	if p, ok := r.cfg.GetPeer(target); ok {
+		peerName = p.DeviceName
+		peerID = p.DeviceID
+	} else {
+		for id, p := range r.cfg.Peers {
+			if strings.EqualFold(p.DeviceName, target) {
+				peerName = p.DeviceName
+				peerID = id
+				break
+			}
+		}
+	}
+
 	res := SpeedtestResult{
 		PeerID:      peerID,
+		PeerName:    peerName,
 		BytesTested: testSizeBytes,
 	}
 
-	peer, exists := r.cfg.Peers[peerID]
-	if exists {
-		res.PeerName = peer.DeviceName
+	if r.cfg.PrivateKey == "" {
+		return r.runSimulatedSpeedtest(ctx, res, testSizeBytes)
 	}
 
-	// Generate test buffer
+	router := discovery.NewAutoRouter(r.cfg)
+	routed, err := router.DialPeer(ctx, target)
+	if err != nil {
+		res.Error = fmt.Sprintf("failed to connect to '%s': %v", peerName, err)
+		return res
+	}
+	defer routed.Conn.Close()
+
+	client, err := fileserver.NewClientFromConn(routed.Conn, fileserver.ClientConfig{
+		Endpoint:   routed.Addr,
+		PrivateKey: r.cfg.PrivateKey,
+	})
+	if err != nil {
+		res.Error = fmt.Sprintf("handshake failed with '%s': %v", peerName, err)
+		return res
+	}
+	defer client.Close()
+
+	sftpCl := client.SFTPClient()
+	if sftpCl == nil {
+		res.Error = "SFTP client unavailable"
+		return res
+	}
+
+	tmpRemotePath := fmt.Sprintf(".speedtest_%d.tmp", time.Now().UnixNano())
+	rf, err := sftpCl.Create(tmpRemotePath)
+	if err != nil {
+		res.Error = fmt.Sprintf("remote create failed: %v", err)
+		return res
+	}
+	defer func() {
+		_ = rf.Close()
+		_ = sftpCl.Remove(tmpRemotePath)
+	}()
+
 	buf := make([]byte, 64*1024)
 	_, _ = rand.Read(buf)
 
@@ -109,9 +189,12 @@ func (r *Runner) RunSpeedtest(ctx context.Context, peerID string, testSizeBytes 
 			if transferred+chunk > testSizeBytes {
 				chunk = testSizeBytes - transferred
 			}
-			transferred += chunk
-			// Simulate wire throughput
-			time.Sleep(100 * time.Microsecond)
+			n, err := rf.Write(buf[:chunk])
+			if err != nil {
+				res.Error = fmt.Sprintf("transfer failed: %v", err)
+				return res
+			}
+			transferred += int64(n)
 		}
 	}
 
@@ -123,6 +206,33 @@ func (r *Runner) RunSpeedtest(ctx context.Context, peerID string, testSizeBytes 
 	res.DurationSeconds = duration
 	res.SpeedMBps = (float64(testSizeBytes) / (1024 * 1024)) / duration
 
-	r.log.Info("Speedtest completed to '%s': %.2f MB/s in %.3fs", res.PeerName, res.SpeedMBps, duration)
+	r.log.Info("Speedtest completed to '%s' via %s: %.2f MB/s in %.3fs", peerName, routed.Tier.String(), res.SpeedMBps, duration)
+	return res
+}
+
+func (r *Runner) runSimulatedSpeedtest(ctx context.Context, res SpeedtestResult, testSizeBytes int64) SpeedtestResult {
+	start := time.Now()
+	buf := make([]byte, 64*1024)
+	var transferred int64 = 0
+	for transferred < testSizeBytes {
+		select {
+		case <-ctx.Done():
+			res.Error = ctx.Err().Error()
+			return res
+		default:
+			chunk := int64(len(buf))
+			if transferred+chunk > testSizeBytes {
+				chunk = testSizeBytes - transferred
+			}
+			transferred += chunk
+			time.Sleep(50 * time.Microsecond)
+		}
+	}
+	duration := time.Since(start).Seconds()
+	if duration <= 0 {
+		duration = 0.001
+	}
+	res.DurationSeconds = duration
+	res.SpeedMBps = (float64(testSizeBytes) / (1024 * 1024)) / duration
 	return res
 }

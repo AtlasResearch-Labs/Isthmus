@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -45,13 +46,13 @@ func printUsage() {
 	fmt.Println("  discover              Scan LAN for other active Isthmus nodes")
 	fmt.Println("  serve                 Start local file server and LAN beacon")
 	fmt.Println("  daemon                Run persistent background node service with WAN sync")
-	fmt.Println("  ui <peer> [path]      Open Retro Windows interactive TUI file explorer")
+	fmt.Println("  ui <peer> [path]      Open Retro Windows interactive TUI file explorer [--at <endpoint>]")
 	fmt.Println("  gui, app              Launch dedicated Retro Windows Desktop GUI")
 	fmt.Println("  browse <peer> [path]  Browse remote files on a peer [--at <endpoint>]")
 	fmt.Println("  pull <peer> <remote>  Pull a file from a peer [--at <endpoint>] [--limit-rate <rate>]")
 	fmt.Println("  push <peer> <file>    Upload a local file to a peer [--at <endpoint>] [--limit-rate <rate>]")
 	fmt.Println("  sync <peer> [dir]     Synchronize a directory bidirectionally [--at <endpoint>]")
-	fmt.Println("  watch [peer] [dir]    Live watch directory and auto-sync changes in real time")
+	fmt.Println("  watch [peer] [dir]    Live watch directory and auto-sync in real time [--at <endpoint>]")
 	fmt.Println("  acl <set|list>        Configure access control policies for peers")
 	fmt.Println("  mesh <sync|status>    Synchronize real-time N-device mesh tailnet")
 	fmt.Println("  service <action>      Manage headless OS service (install/start/stop)")
@@ -470,18 +471,23 @@ func connectViaRouter(target string, directEndpoint ...string) (*fileserver.Clie
 }
 
 func cmdUI(args []string) {
-	if len(args) < 1 {
-		fmt.Println("Usage: isthmus ui <peer-name-or-endpoint> [initial-path]")
+	fs := flag.NewFlagSet("ui", flag.ExitOnError)
+	atEndpoint := fs.String("at", "", "Direct peer endpoint (e.g. 192.168.1.6:2222)")
+	fs.Parse(reorderFlags(args))
+
+	remain := fs.Args()
+	if len(remain) < 1 {
+		fmt.Println("Usage: isthmus ui [--at <endpoint>] <peer-name-or-endpoint> [initial-path]")
 		return
 	}
 
-	peerTarget := args[0]
+	peerTarget := remain[0]
 	initialPath := "."
-	if len(args) >= 2 {
-		initialPath = args[1]
+	if len(remain) >= 2 {
+		initialPath = remain[1]
 	}
 
-	client, tier, err := connectViaRouter(peerTarget)
+	client, tier, err := connectViaRouter(peerTarget, *atEndpoint)
 	if err != nil {
 		logger.Error("Connection to '%s' failed: %v", peerTarget, err)
 		os.Exit(1)
@@ -727,15 +733,24 @@ func cmdSync(args []string) {
 }
 
 func cmdWatch(args []string) {
+	fs := flag.NewFlagSet("watch", flag.ExitOnError)
+	atEndpoint := fs.String("at", "", "Direct peer endpoint (e.g. 192.168.1.6:2222)")
+	fs.Parse(reorderFlags(args))
+
 	cfg, err := config.LoadConfig("")
 	if err != nil {
 		logger.Error("Please run 'isthmus init' first.")
 		os.Exit(1)
 	}
 
+	remain := fs.Args()
 	watchDir := cfg.SharedDir
-	if len(args) >= 2 {
-		watchDir = args[1]
+	var targetPeer string
+	if len(remain) >= 1 {
+		targetPeer = remain[0]
+	}
+	if len(remain) >= 2 {
+		watchDir = remain[1]
 	}
 
 	fw, err := watcher.NewFolderWatcher(watchDir, watcher.Options{
@@ -746,21 +761,53 @@ func cmdWatch(args []string) {
 		os.Exit(1)
 	}
 
-	var targetPeer string
-	if len(args) >= 1 {
-		targetPeer = args[0]
+	var clientMu sync.Mutex
+	var activeClient *fileserver.Client
+
+	getClient := func() (*fileserver.Client, error) {
+		clientMu.Lock()
+		defer clientMu.Unlock()
+		if activeClient != nil {
+			if _, err := activeClient.List("."); err == nil {
+				return activeClient, nil
+			}
+			activeClient.Close()
+			activeClient = nil
+		}
+		c, tier, err := connectViaRouter(targetPeer, *atEndpoint)
+		if err != nil {
+			return nil, err
+		}
+		logger.Info("Established live sync session with '%s' via %s", targetPeer, tier)
+		activeClient = c
+		return activeClient, nil
 	}
 
 	fw.OnChange(func(we watcher.WatchEvent) {
 		logger.Info("[%s] %s (%s)", we.Type, we.RelPath, we.Timestamp.Format("15:04:05"))
 		if targetPeer != "" {
-			client, _, err := connectViaRouter(targetPeer)
-			if err == nil {
-				defer client.Close()
-				if we.Type == watcher.EventCreate || we.Type == watcher.EventModify {
-					_ = client.PushFile(we.Path, we.RelPath, nil)
-				} else if we.Type == watcher.EventDelete {
-					_ = client.Remove(we.RelPath)
+			c, err := getClient()
+			if err != nil {
+				logger.Error("Sync connection to '%s' failed: %v", targetPeer, err)
+				return
+			}
+			if we.Type == watcher.EventCreate || we.Type == watcher.EventModify {
+				logger.Info("Syncing %s -> %s...", we.RelPath, targetPeer)
+				if chk, pushErr := c.PushFileResume(we.Path, we.RelPath, nil); pushErr != nil {
+					logger.Error("Sync error for %s: %v", we.RelPath, pushErr)
+				} else {
+					shortHash := chk
+					if len(shortHash) > 8 {
+						shortHash = shortHash[:8]
+					}
+					logger.Info("Sync OK: %s (SHA256: %s)", we.RelPath, shortHash)
+				}
+			} else if we.Type == watcher.EventDelete {
+				logger.Info("Deleting remote %s on %s...", we.RelPath, targetPeer)
+				if rmErr := c.Remove(we.RelPath); rmErr != nil {
+					logger.Error("Remote delete error for %s: %v", we.RelPath, rmErr)
+				} else {
+					logger.Info("Remote delete OK: %s", we.RelPath)
 				}
 			}
 		}
@@ -777,6 +824,9 @@ func cmdWatch(args []string) {
 	fmt.Printf("  Directory:   %s\n", watchDir)
 	if targetPeer != "" {
 		fmt.Printf("  Target Peer: %s (Auto-Syncing on save)\n", targetPeer)
+		if *atEndpoint != "" {
+			fmt.Printf("  Endpoint:    %s\n", *atEndpoint)
+		}
 	} else {
 		fmt.Printf("  Target Peer: Local change monitor\n")
 	}
@@ -786,6 +836,12 @@ func cmdWatch(args []string) {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	<-sigChan
+
+	clientMu.Lock()
+	if activeClient != nil {
+		activeClient.Close()
+	}
+	clientMu.Unlock()
 }
 
 func cmdACL(args []string) {

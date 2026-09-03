@@ -160,8 +160,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/relay/routes", s.handleRelayRoutes)
 	mux.HandleFunc("/api/conflict/diff", s.handleConflictDiff)
 	mux.HandleFunc("/api/conflict/resolve", s.handleConflictResolve)
-	mux.Handle("/api/events/stream", s.events)
-	mux.HandleFunc("/api/events/history", s.handleEventsHistory)
+	// Client Distribution & Zero-Install Web Portal
+	mux.HandleFunc("/get", s.handleGetPortal)
+	mux.HandleFunc("/download/", s.handleDownloadBinary)
 
 	return mux
 }
@@ -1552,6 +1553,135 @@ func (s *Server) handleEventsHistory(w http.ResponseWriter, r *http.Request) {
 	history := s.events.GetHistory()
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(history)
+}
+
+// 13. Client Distribution & Zero-Install Web Portal
+func (s *Server) handleGetPortal(w http.ResponseWriter, r *http.Request) {
+	host := r.Host
+	html := fmt.Sprintf(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Get Isthmus Mesh Engine</title>
+<style>
+  body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0c1017; color: #c9d1d9; margin: 0; padding: 2rem; display: flex; justify-content: center; }
+  .card { max-width: 650px; width: 100%%; background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 2.5rem; box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
+  h1 { margin-top: 0; color: #58a6ff; font-size: 1.8rem; }
+  p { line-height: 1.6; color: #8b949e; }
+  .node-badge { background: #21262d; border: 1px solid #30363d; border-radius: 6px; padding: 0.8rem 1rem; margin: 1.5rem 0; font-family: monospace; font-size: 0.9rem; }
+  .buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 2rem 0; }
+  .btn { display: flex; align-items: center; justify-content: center; padding: 1rem; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 1rem; transition: background 0.2s; }
+  .btn-win { background: #0078d4; color: #fff; }
+  .btn-win:hover { background: #106ebe; }
+  .btn-linux { background: #238636; color: #fff; }
+  .btn-linux:hover { background: #2ea043; }
+  .btn-mac { background: #4a5568; color: #fff; }
+  .btn-mac:hover { background: #718096; }
+  .btn-apk { background: #d97706; color: #fff; }
+  .btn-apk:hover { background: #b45309; }
+  .code-box { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 1rem; font-family: Consolas, monospace; font-size: 0.85rem; color: #79c0ff; overflow-x: auto; margin-top: 1rem; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>⚡ Get Isthmus Mesh Engine</h1>
+  <p>Connect this device directly to the peer mesh storage network hosted by <strong>%s</strong>.</p>
+  
+  <div class="node-badge">
+    <strong>Host Node:</strong> %s<br>
+    <strong>Mesh Address:</strong> %s<br>
+    <strong>SFTP Data Port:</strong> %d
+  </div>
+
+  <div class="buttons">
+    <a href="/download/windows" class="btn btn-win">🪟 Windows (x64)</a>
+    <a href="/download/linux" class="btn btn-linux">🐧 Linux (x64)</a>
+    <a href="/download/mac" class="btn btn-mac">🍎 macOS (Apple / Intel)</a>
+    <a href="/download/android" class="btn btn-apk">📱 Android APK</a>
+  </div>
+
+  <p><strong>Quick 1-Liner Install (PowerShell for Windows):</strong></p>
+  <div class="code-box">Invoke-WebRequest -Uri "http://%s/download/windows" -OutFile "$env:USERPROFILE\Downloads\isthmus.exe"</div>
+
+  <p><strong>Quick 1-Liner Install (Linux / macOS Terminal):</strong></p>
+  <div class="code-box">curl -fsSL "http://%s/download/linux" -o isthmus &amp;&amp; chmod +x isthmus &amp;&amp; sudo mv isthmus /usr/local/bin/</div>
+</div>
+</body>
+</html>`, s.cfg.DeviceName, s.cfg.DeviceName, host, s.cfg.SFTPPort, host, host)
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write([]byte(html))
+}
+
+func (s *Server) handleDownloadBinary(w http.ResponseWriter, r *http.Request) {
+	target := strings.TrimPrefix(r.URL.Path, "/download/")
+	target = strings.TrimSpace(target)
+
+	// Search locations for binaries
+	candidates := []string{}
+	filename := "isthmus"
+
+	switch strings.ToLower(target) {
+	case "windows", "win", "isthmus.exe", "windows-amd64":
+		filename = "isthmus.exe"
+		candidates = append(candidates,
+			"dist/binaries/isthmus-windows-amd64.exe",
+			"dist/isthmus_0.5.0_windows_amd64.zip",
+			"isthmus.exe",
+		)
+		if curExec, err := os.Executable(); err == nil {
+			candidates = append(candidates, curExec)
+		}
+		if localApp := os.Getenv("LOCALAPPDATA"); localApp != "" {
+			candidates = append(candidates, filepath.Join(localApp, "isthmus", "bin", "isthmus.exe"))
+		}
+
+	case "linux", "linux-amd64":
+		filename = "isthmus"
+		candidates = append(candidates,
+			"dist/binaries/isthmus-linux-amd64",
+			"bin/isthmus-linux-amd64",
+			"/usr/local/bin/isthmus",
+		)
+
+	case "mac", "darwin", "darwin-arm64", "darwin-amd64":
+		filename = "isthmus-darwin"
+		candidates = append(candidates,
+			"dist/binaries/isthmus-darwin-arm64",
+			"dist/binaries/isthmus-darwin-amd64",
+		)
+
+	case "android", "apk", "isthmus.apk":
+		filename = "isthmus.apk"
+		candidates = append(candidates,
+			"dist/isthmus.apk",
+			"android/app/build/outputs/apk/release/app-release.apk",
+		)
+
+	default:
+		if runtime.GOOS == "windows" {
+			filename = "isthmus.exe"
+		}
+		if curExec, err := os.Executable(); err == nil {
+			candidates = append(candidates, curExec)
+		}
+	}
+
+	for _, p := range candidates {
+		if fi, err := os.Stat(p); err == nil && !fi.IsDir() && fi.Size() > 0 {
+			f, err := os.Open(p)
+			if err == nil {
+				defer f.Close()
+				w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+				w.Header().Set("Content-Type", "application/octet-stream")
+				http.ServeContent(w, r, filename, fi.ModTime(), f)
+				return
+			}
+		}
+	}
+
+	http.Error(w, fmt.Sprintf("Binary for '%s' not found on this host node", target), http.StatusNotFound)
 }
 
 

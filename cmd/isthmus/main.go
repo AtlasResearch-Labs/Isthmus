@@ -27,6 +27,7 @@ import (
 	"isthmus/pkg/runner"
 	"isthmus/pkg/service"
 	"isthmus/pkg/tui"
+	"isthmus/pkg/turbo"
 	"isthmus/pkg/vault"
 	"isthmus/pkg/watcher"
 	"isthmus/pkg/webdav"
@@ -50,8 +51,9 @@ func printUsage() {
 	fmt.Println("  ui <peer> [path]      Open Retro Windows interactive TUI file explorer [--at <endpoint>]")
 	fmt.Println("  gui, app              Launch dedicated Retro Windows Desktop GUI")
 	fmt.Println("  browse <peer> [path]  Browse remote files on a peer [--at <endpoint>]")
-	fmt.Println("  pull <peer> <remote>  Pull a file from a peer [--at <endpoint>] [--limit-rate <rate>]")
-	fmt.Println("  push <peer> <file>    Upload a local file to a peer [--at <endpoint>] [--limit-rate <rate>]")
+	fmt.Println("  pull <peer> <remote>  Pull a file from a peer [--at <endpoint>] [--limit-rate <rate>] [--turbo]")
+	fmt.Println("  push <peer> <file>    Upload a local file to a peer [--at <endpoint>] [--limit-rate <rate>] [--turbo]")
+	fmt.Println("  turbo <peer> <file>   High-performance parallel multi-stream upload/download/bench")
 	fmt.Println("  sync <peer> [dir]     Synchronize a directory bidirectionally [--at <endpoint>]")
 	fmt.Println("  watch [peer] [dir]    Live watch directory and auto-sync in real time [--at <endpoint>]")
 	fmt.Println("  acl <set|list>        Configure access control policies for peers")
@@ -99,6 +101,8 @@ func main() {
 		cmdPull(os.Args[2:])
 	case "push":
 		cmdPush(os.Args[2:])
+	case "turbo":
+		cmdTurbo(os.Args[2:])
 	case "sync":
 		cmdSync(os.Args[2:])
 	case "watch":
@@ -588,11 +592,12 @@ func cmdPull(args []string) {
 	fs := flag.NewFlagSet("pull", flag.ExitOnError)
 	limitRate := fs.String("limit-rate", "", "Limit transfer speed (e.g. 500k, 2M, 10M)")
 	atEndpoint := fs.String("at", "", "Direct peer endpoint (e.g. 192.168.1.6:2222)")
+	isTurbo := fs.Bool("turbo", false, "Use parallel multi-stream Turbo transfer engine")
 	fs.Parse(reorderFlags(args))
 
 	remain := fs.Args()
 	if len(remain) < 2 {
-		fmt.Println("Usage: isthmus pull [--at <endpoint>] [--limit-rate <rate>] <peer> <remote-file> [local-destination]")
+		fmt.Println("Usage: isthmus pull [--at <endpoint>] [--limit-rate <rate>] [--turbo] <peer> <remote-file> [local-destination]")
 		os.Exit(1)
 	}
 
@@ -620,6 +625,25 @@ func cmdPull(args []string) {
 	logger.Info("Connected via %s transport.", tier)
 	logger.Info("Starting download: %s -> %s", remoteFile, localDest)
 
+	if *isTurbo {
+		logger.Info("Starting Turbo multi-stream parallel download (6 streams)...")
+		lastReport := time.Now()
+		prog, err := client.PullFileTurbo(remoteFile, localDest, 6, func(p turbo.TransferProgress) {
+			if time.Since(lastReport) >= 150*time.Millisecond || p.CompletedChunks == p.TotalChunks {
+				bar := fileserver.RenderProgressBar(p.TransferredBytes, p.TotalBytes, p.SpeedMBps*1024*1024, 25)
+				fmt.Printf("\r%s [Turbo: %d/%d chunks]", bar, p.CompletedChunks, p.TotalChunks)
+				lastReport = time.Now()
+			}
+		})
+		fmt.Println()
+		if err != nil {
+			logger.Error("Turbo pull failed: %v", err)
+			os.Exit(1)
+		}
+		logger.Info("Turbo pull complete! %s downloaded at %.2f MB/s", fileserver.FormatBytes(prog.TotalBytes), prog.SpeedMBps)
+		return
+	}
+
 	lastReport := time.Now()
 	checksum, err := client.PullFileResume(remoteFile, localDest, func(transferred, total int64, speed float64) {
 		if time.Since(lastReport) >= 200*time.Millisecond || transferred == total {
@@ -642,11 +666,12 @@ func cmdPush(args []string) {
 	fs := flag.NewFlagSet("push", flag.ExitOnError)
 	limitRate := fs.String("limit-rate", "", "Limit transfer speed (e.g. 500k, 2M, 10M)")
 	atEndpoint := fs.String("at", "", "Direct peer endpoint (e.g. 192.168.1.6:2222)")
+	isTurbo := fs.Bool("turbo", false, "Use parallel multi-stream Turbo transfer engine")
 	fs.Parse(reorderFlags(args))
 
 	remain := fs.Args()
 	if len(remain) < 2 {
-		fmt.Println("Usage: isthmus push [--at <endpoint>] [--limit-rate <rate>] <peer> <local-file> [remote-destination]")
+		fmt.Println("Usage: isthmus push [--at <endpoint>] [--limit-rate <rate>] [--turbo] <peer> <local-file> [remote-destination]")
 		os.Exit(1)
 	}
 
@@ -674,6 +699,25 @@ func cmdPush(args []string) {
 	logger.Info("Connected via %s transport.", tier)
 	logger.Info("Starting upload: %s -> %s", localFile, remoteDest)
 
+	if *isTurbo {
+		logger.Info("Starting Turbo multi-stream parallel upload (6 streams)...")
+		lastReport := time.Now()
+		prog, err := client.PushFileTurbo(localFile, remoteDest, 6, func(p turbo.TransferProgress) {
+			if time.Since(lastReport) >= 150*time.Millisecond || p.CompletedChunks == p.TotalChunks {
+				bar := fileserver.RenderProgressBar(p.TransferredBytes, p.TotalBytes, p.SpeedMBps*1024*1024, 25)
+				fmt.Printf("\r%s [Turbo: %d/%d chunks]", bar, p.CompletedChunks, p.TotalChunks)
+				lastReport = time.Now()
+			}
+		})
+		fmt.Println()
+		if err != nil {
+			logger.Error("Turbo push failed: %v", err)
+			os.Exit(1)
+		}
+		logger.Info("Turbo push complete! %s uploaded at %.2f MB/s", fileserver.FormatBytes(prog.TotalBytes), prog.SpeedMBps)
+		return
+	}
+
 	lastReport := time.Now()
 	checksum, err := client.PushFileResume(localFile, remoteDest, func(transferred, total int64, speed float64) {
 		if time.Since(lastReport) >= 200*time.Millisecond || transferred == total {
@@ -690,6 +734,46 @@ func cmdPush(args []string) {
 	}
 
 	logger.Info("Push complete. SHA256 checksum: %s", checksum)
+}
+
+func cmdTurbo(args []string) {
+	if len(args) == 0 {
+		fmt.Println("Usage:")
+		fmt.Println("  isthmus turbo <peer> <local-file> [remote-dest]      Upload file using parallel Turbo engine")
+		fmt.Println("  isthmus turbo --pull <peer> <remote-file> [dest]     Download file using parallel Turbo engine")
+		fmt.Println("  isthmus turbo bench <file>                           Run local parallel chunk pipeline benchmark")
+		return
+	}
+
+	if args[0] == "bench" {
+		if len(args) < 2 {
+			fmt.Println("Usage: isthmus turbo bench <file>")
+			return
+		}
+		filePath := args[1]
+		engine := turbo.NewEngine(turbo.DefaultChunkSize, 6)
+		fmt.Printf("Analyzing and chunking '%s'...\n", filePath)
+		manifest, err := engine.GenerateManifest(filePath)
+		if err != nil {
+			logger.Error("Manifest error: %v", err)
+			os.Exit(1)
+		}
+		fmt.Printf("[TURBO MANIFEST OK]\n")
+		fmt.Printf("  File:         %s\n", manifest.Filename)
+		fmt.Printf("  Total Size:   %s (%d bytes)\n", fileserver.FormatBytes(manifest.TotalSize), manifest.TotalSize)
+		fmt.Printf("  Chunk Slices: %d (Slice Size: %s)\n", manifest.TotalChunks, fileserver.FormatBytes(manifest.ChunkSize))
+		fmt.Printf("  SHA-256 Hash: %s\n", manifest.FileHash)
+		return
+	}
+
+	if args[0] == "--pull" || args[0] == "-pull" {
+		pullArgs := append([]string{"--turbo"}, args[1:]...)
+		cmdPull(pullArgs)
+		return
+	}
+
+	pushArgs := append([]string{"--turbo"}, args...)
+	cmdPush(pushArgs)
 }
 
 func cmdSync(args []string) {

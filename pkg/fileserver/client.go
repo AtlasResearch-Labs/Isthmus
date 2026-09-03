@@ -16,6 +16,7 @@ import (
 
 	"isthmus/internal/logger"
 	"isthmus/pkg/identity"
+	"isthmus/pkg/turbo"
 )
 
 type ClientConfig struct {
@@ -393,5 +394,23 @@ func (c *Client) Exec(cmd string) (string, error) {
 
 	out, err := session.CombinedOutput(cmd)
 	return string(out), err
+}
+
+// PushFileTurbo uploads a file using the parallel multi-stream Turbo engine
+func (c *Client) PushFileTurbo(localPath, remotePath string, concurrency int, onProgress func(turbo.TransferProgress)) (*turbo.TransferProgress, error) {
+	if c.sftpClient == nil {
+		return nil, fmt.Errorf("SFTP client not connected")
+	}
+	eng := turbo.NewEngine(turbo.DefaultChunkSize, concurrency)
+	return eng.PushTurbo(localPath, c.sftpClient, remotePath, onProgress)
+}
+
+// PullFileTurbo downloads a file using the parallel multi-stream Turbo engine
+func (c *Client) PullFileTurbo(remotePath, localPath string, concurrency int, onProgress func(turbo.TransferProgress)) (*turbo.TransferProgress, error) {
+	if c.sftpClient == nil {
+		return nil, fmt.Errorf("SFTP client not connected")
+	}
+	eng := turbo.NewEngine(turbo.DefaultChunkSize, concurrency)
+	return eng.PullTurbo(c.sftpClient, remotePath, localPath, onProgress)
 }
 

@@ -7,8 +7,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/pkg/sftp"
 
 	"isthmus/internal/logger"
 )
@@ -242,4 +245,247 @@ func (e *Engine) TurboCopyParallel(srcPath, dstPath string, onProgress func(Tran
 
 	e.log.Info("Turbo transfer of '%s' completed in %.3fs (%.2f MB/s)", manifest.Filename, elapsed, finalSpeed)
 	return finalProg, nil
+}
+
+// PushTurbo executes parallel multi-stream SFTP chunk upload with SHA-256 verification
+func (e *Engine) PushTurbo(srcPath string, sftpCl *sftp.Client, remotePath string, onProgress func(TransferProgress)) (*TransferProgress, error) {
+	manifest, err := e.GenerateManifest(srcPath)
+	if err != nil {
+		return nil, err
+	}
+
+	srcFile, err := os.Open(srcPath)
+	if err != nil {
+		return nil, err
+	}
+	defer srcFile.Close()
+
+	remoteDir := filepath.ToSlash(filepath.Dir(remotePath))
+	if remoteDir != "." && remoteDir != "/" && remoteDir != "" {
+		_ = sftpCl.MkdirAll(remoteDir)
+	}
+
+	rf, err := sftpCl.OpenFile(remotePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC)
+	if err != nil {
+		return nil, fmt.Errorf("open remote file: %w", err)
+	}
+	defer rf.Close()
+
+	if manifest.TotalSize > 0 {
+		_ = rf.Truncate(manifest.TotalSize)
+	}
+
+	startTime := time.Now()
+	var transferredBytes int64 = 0
+	var completedChunks int = 0
+	var mu sync.Mutex
+
+	jobs := make(chan ChunkManifest, len(manifest.Chunks))
+	for _, c := range manifest.Chunks {
+		jobs <- c
+	}
+	close(jobs)
+
+	var wg sync.WaitGroup
+	var workerErr error
+	var errOnce sync.Once
+
+	for w := 0; w < e.concurrency; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			buf := make([]byte, e.chunkSize)
+
+			for chunk := range jobs {
+				_, rErr := srcFile.ReadAt(buf[:chunk.Size], chunk.Offset)
+				if rErr != nil && rErr != io.EOF {
+					errOnce.Do(func() { workerErr = fmt.Errorf("read chunk %d: %w", chunk.Index, rErr) })
+					return
+				}
+
+				h := sha256.Sum256(buf[:chunk.Size])
+				if hex.EncodeToString(h[:]) != chunk.Checksum {
+					errOnce.Do(func() { workerErr = ErrChecksumMismatch })
+					return
+				}
+
+				_, wErr := rf.WriteAt(buf[:chunk.Size], chunk.Offset)
+				if wErr != nil {
+					errOnce.Do(func() { workerErr = fmt.Errorf("write chunk %d: %w", chunk.Index, wErr) })
+					return
+				}
+
+				mu.Lock()
+				transferredBytes += chunk.Size
+				completedChunks++
+				dur := time.Since(startTime).Seconds()
+				var speed float64 = 0
+				if dur > 0 {
+					speed = (float64(transferredBytes) / (1024 * 1024)) / dur
+				}
+				prog := TransferProgress{
+					TransferredBytes: transferredBytes,
+					TotalBytes:       manifest.TotalSize,
+					CompletedChunks:  completedChunks,
+					TotalChunks:      manifest.TotalChunks,
+					SpeedMBps:        speed,
+					Percent:          (float64(transferredBytes) / float64(manifest.TotalSize)) * 100.0,
+				}
+				mu.Unlock()
+
+				if onProgress != nil {
+					onProgress(prog)
+				}
+			}
+		}()
+	}
+
+	wg.Wait()
+	if workerErr != nil {
+		return nil, workerErr
+	}
+
+	elapsed := time.Since(startTime).Seconds()
+	var finalSpeed float64 = 0
+	if elapsed > 0 {
+		finalSpeed = (float64(manifest.TotalSize) / (1024 * 1024)) / elapsed
+	}
+
+	res := &TransferProgress{
+		TransferredBytes: manifest.TotalSize,
+		TotalBytes:       manifest.TotalSize,
+		CompletedChunks:  manifest.TotalChunks,
+		TotalChunks:      manifest.TotalChunks,
+		SpeedMBps:        finalSpeed,
+		Percent:          100.0,
+	}
+	e.log.Info("Turbo upload of '%s' completed: %.2f MB/s in %.3fs", manifest.Filename, finalSpeed, elapsed)
+	return res, nil
+}
+
+// PullTurbo executes parallel multi-stream SFTP chunk download with SHA-256 verification
+func (e *Engine) PullTurbo(sftpCl *sftp.Client, remotePath string, localPath string, onProgress func(TransferProgress)) (*TransferProgress, error) {
+	rf, err := sftpCl.Open(remotePath)
+	if err != nil {
+		return nil, fmt.Errorf("open remote file: %w", err)
+	}
+	defer rf.Close()
+
+	fi, err := rf.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("stat remote file: %w", err)
+	}
+
+	totalSize := fi.Size()
+	numChunks := int((totalSize + e.chunkSize - 1) / e.chunkSize)
+	if numChunks == 0 {
+		numChunks = 1
+	}
+
+	if err := os.MkdirAll(filepath.Dir(localPath), 0755); err != nil {
+		return nil, fmt.Errorf("create local dir: %w", err)
+	}
+
+	localFile, err := os.Create(localPath)
+	if err != nil {
+		return nil, fmt.Errorf("create local file: %w", err)
+	}
+	defer localFile.Close()
+
+	if totalSize > 0 {
+		_ = localFile.Truncate(totalSize)
+	}
+
+	type pullChunk struct {
+		Index  int
+		Offset int64
+		Size   int64
+	}
+
+	jobs := make(chan pullChunk, numChunks)
+	var offset int64 = 0
+	for i := 0; i < numChunks; i++ {
+		chunkSize := e.chunkSize
+		if offset+chunkSize > totalSize {
+			chunkSize = totalSize - offset
+		}
+		jobs <- pullChunk{Index: i, Offset: offset, Size: chunkSize}
+		offset += chunkSize
+	}
+	close(jobs)
+
+	startTime := time.Now()
+	var transferredBytes int64 = 0
+	var completedChunks int = 0
+	var mu sync.Mutex
+
+	var wg sync.WaitGroup
+	var workerErr error
+	var errOnce sync.Once
+
+	for w := 0; w < e.concurrency; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			buf := make([]byte, e.chunkSize)
+
+			for chunk := range jobs {
+				_, rErr := rf.ReadAt(buf[:chunk.Size], chunk.Offset)
+				if rErr != nil && rErr != io.EOF {
+					errOnce.Do(func() { workerErr = fmt.Errorf("remote read chunk %d: %w", chunk.Index, rErr) })
+					return
+				}
+
+				_, wErr := localFile.WriteAt(buf[:chunk.Size], chunk.Offset)
+				if wErr != nil {
+					errOnce.Do(func() { workerErr = fmt.Errorf("local write chunk %d: %w", chunk.Index, wErr) })
+					return
+				}
+
+				mu.Lock()
+				transferredBytes += chunk.Size
+				completedChunks++
+				dur := time.Since(startTime).Seconds()
+				var speed float64 = 0
+				if dur > 0 {
+					speed = (float64(transferredBytes) / (1024 * 1024)) / dur
+				}
+				prog := TransferProgress{
+					TransferredBytes: transferredBytes,
+					TotalBytes:       totalSize,
+					CompletedChunks:  completedChunks,
+					TotalChunks:      numChunks,
+					SpeedMBps:        speed,
+					Percent:          (float64(transferredBytes) / float64(totalSize)) * 100.0,
+				}
+				mu.Unlock()
+
+				if onProgress != nil {
+					onProgress(prog)
+				}
+			}
+		}()
+	}
+
+	wg.Wait()
+	if workerErr != nil {
+		return nil, workerErr
+	}
+
+	elapsed := time.Since(startTime).Seconds()
+	var finalSpeed float64 = 0
+	if elapsed > 0 {
+		finalSpeed = (float64(totalSize) / (1024 * 1024)) / elapsed
+	}
+
+	res := &TransferProgress{
+		TransferredBytes: totalSize,
+		TotalBytes:       totalSize,
+		CompletedChunks:  numChunks,
+		TotalChunks:      numChunks,
+		SpeedMBps:        finalSpeed,
+		Percent:          100.0,
+	}
+	e.log.Info("Turbo download of '%s' completed: %.2f MB/s in %.3fs", fi.Name(), finalSpeed, elapsed)
+	return res, nil
 }

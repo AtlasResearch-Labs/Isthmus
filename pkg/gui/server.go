@@ -277,6 +277,25 @@ func (s *Server) handleDeletePeer(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(`{"status":"ok"}`))
 }
 
+func (s *Server) getPeerClient(ctx context.Context, peer string) (*fileserver.Client, *discovery.RoutedConnection, error) {
+	router := discovery.NewAutoRouter(s.cfg)
+	routed, err := router.DialPeer(ctx, peer)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to dial peer '%s': %w", peer, err)
+	}
+
+	client, err := fileserver.NewClientFromConn(routed.Conn, fileserver.ClientConfig{
+		Endpoint:   routed.Addr,
+		PrivateKey: s.cfg.PrivateKey,
+	})
+	if err != nil {
+		routed.Conn.Close()
+		return nil, nil, fmt.Errorf("SFTP handshake with '%s' failed: %w", peer, err)
+	}
+
+	return client, routed, nil
+}
+
 func (s *Server) handleBrowse(w http.ResponseWriter, r *http.Request) {
 	peer := r.URL.Query().Get("peer")
 	path := r.URL.Query().Get("path")
@@ -322,27 +341,16 @@ func (s *Server) handleBrowse(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 2. Remote Peer browsing via AutoRouter
-	router := discovery.NewAutoRouter(s.cfg)
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	routed, err := router.DialPeer(ctx, peer)
+	client, routed, err := s.getPeerClient(ctx, peer)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("Dial peer failed: %v", err)})
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 	defer routed.Conn.Close()
-
-	client, err := fileserver.NewClientFromConn(routed.Conn, fileserver.ClientConfig{
-		Endpoint:   routed.Addr,
-		PrivateKey: s.cfg.PrivateKey,
-	})
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("SFTP handshake failed: %v", err)})
-		return
-	}
 	defer client.Close()
 
 	infos, err := client.List(path)
@@ -941,8 +949,50 @@ func (s *Server) handleFileContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Remote peer file content: not yet supported without SFTP tunnel
-	http.Error(w, "remote peer file content not yet supported", http.StatusNotImplemented)
+	// Remote peer file content via SFTP
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+
+	client, routed, err := s.getPeerClient(ctx, peerID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer routed.Conn.Close()
+	defer client.Close()
+
+	sftpCl := client.SFTPClient()
+	if sftpCl == nil {
+		http.Error(w, "SFTP client unavailable", http.StatusInternalServerError)
+		return
+	}
+
+	rf, err := sftpCl.Open(relPath)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to open remote file: %v", err), http.StatusNotFound)
+		return
+	}
+	defer rf.Close()
+
+	fi, err := rf.Stat()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to stat remote file: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	data, err := io.ReadAll(rf)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to read remote file: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"content":  string(data),
+		"path":     relPath,
+		"size":     len(data),
+		"modified": fi.ModTime(),
+	})
 }
 
 func (s *Server) handleFileSave(w http.ResponseWriter, r *http.Request) {
@@ -976,8 +1026,44 @@ func (s *Server) handleFileSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Remote peer file save: not yet supported without SFTP tunnel
-	http.Error(w, "remote peer file save not yet supported", http.StatusNotImplemented)
+	// Remote peer file save via SFTP
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+
+	client, routed, err := s.getPeerClient(ctx, req.Peer)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer routed.Conn.Close()
+	defer client.Close()
+
+	sftpCl := client.SFTPClient()
+	if sftpCl == nil {
+		http.Error(w, "SFTP client unavailable", http.StatusInternalServerError)
+		return
+	}
+
+	// Ensure remote parent directory exists
+	remoteDir := filepath.ToSlash(filepath.Dir(req.Path))
+	if remoteDir != "." && remoteDir != "/" && remoteDir != "" {
+		_ = sftpCl.MkdirAll(remoteDir)
+	}
+
+	rf, err := sftpCl.OpenFile(req.Path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to open remote file for writing: %v", err), http.StatusInternalServerError)
+		return
+	}
+	defer rf.Close()
+
+	if _, err := rf.Write([]byte(req.Content)); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to write remote file: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{"status":"saved"}`))
 }
 
 // 2. Cross-Device Magic Clipboard
@@ -1036,8 +1122,38 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Remote peer media streaming: not yet supported without SFTP tunnel
-	http.Error(w, "remote peer media streaming not yet supported", http.StatusNotImplemented)
+	// Remote peer media streaming via SFTP
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Minute)
+	defer cancel()
+
+	client, routed, err := s.getPeerClient(ctx, peerID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer routed.Conn.Close()
+	defer client.Close()
+
+	sftpCl := client.SFTPClient()
+	if sftpCl == nil {
+		http.Error(w, "SFTP client unavailable", http.StatusInternalServerError)
+		return
+	}
+
+	rf, err := sftpCl.Open(relPath)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Remote file not found: %v", err), http.StatusNotFound)
+		return
+	}
+	defer rf.Close()
+
+	fi, err := rf.Stat()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	http.ServeContent(w, r, fi.Name(), fi.ModTime(), rf)
 }
 
 // 4. Mesh Diagnostics (Ping & Speedtest)
@@ -1146,8 +1262,34 @@ func (s *Server) handleSharePublic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Remote peer guest share: not yet supported without SFTP tunnel
-	http.Error(w, "Remote peer guest share not yet supported", http.StatusNotImplemented)
+	// Remote peer guest share via SFTP
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
+	defer cancel()
+
+	client, routed, err := s.getPeerClient(ctx, st.PeerID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to connect to source node: %v", err), http.StatusInternalServerError)
+		return
+	}
+	defer routed.Conn.Close()
+	defer client.Close()
+
+	sftpCl := client.SFTPClient()
+	if sftpCl == nil {
+		http.Error(w, "SFTP client unavailable", http.StatusInternalServerError)
+		return
+	}
+
+	rf, err := sftpCl.Open(st.FilePath)
+	if err != nil {
+		http.Error(w, "Remote shared file no longer exists", http.StatusNotFound)
+		return
+	}
+	defer rf.Close()
+
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", st.Filename))
+	w.Header().Set("Content-Type", "application/octet-stream")
+	_, _ = io.Copy(w, rf)
 }
 
 // 6. File Snapshot Time-Machine

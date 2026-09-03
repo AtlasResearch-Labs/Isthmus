@@ -1,0 +1,23 @@
+{
+    "version": "0.5.0",
+    "description": "Cross-Device Zero-Trust Secure Tunnel and Distributed Mesh File System",
+    "homepage": "https://github.com/AtlasResearch-Labs/Isthmus",
+    "license": "MIT",
+    "architecture": {
+        "64bit": {
+            "url": "https://github.com/AtlasResearch-Labs/Isthmus/releases/latest/download/isthmus-windows-amd64.exe#/isthmus.exe"
+        },
+        "arm64": {
+            "url": "https://github.com/AtlasResearch-Labs/Isthmus/releases/latest/download/isthmus-windows-arm64.exe#/isthmus.exe"
+        }
+    },
+    "bin": "isthmus.exe",
+    "shortcuts": [
+        [
+            "isthmus.exe",
+            "Isthmus Studio",
+            "gui --port 7788"
+        ]
+    ],
+    "checkver": "github"
+}

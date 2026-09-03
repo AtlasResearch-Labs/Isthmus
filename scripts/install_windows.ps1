@@ -15,17 +15,31 @@ Write-Host "=========================================" -ForegroundColor Cyan
 Write-Host "[1/4] Setting up directories at $installRoot..." -ForegroundColor Yellow
 New-Item -ItemType Directory -Force -Path $binDir | Out-Null
 
-# 2. Copy Executables
-Write-Host "[2/4] Copying binaries..." -ForegroundColor Yellow
-$srcBin = Join-Path $scriptDir "bin\isthmus.exe"
-if (-not (Test-Path $srcBin)) {
-    $srcBin = Join-Path $scriptDir "isthmus.exe"
-}
-Copy-Item $srcBin -Destination (Join-Path $binDir "isthmus.exe") -Force
+# 2. Copy or Download Executables
+$targetExe = Join-Path $binDir "isthmus.exe"
+$localCandidate = $null
 
-$srcCoord = Join-Path $scriptDir "bin\isthmus-coord.exe"
-if (Test-Path $srcCoord) {
-    Copy-Item $srcCoord -Destination (Join-Path $binDir "isthmus-coord.exe") -Force
+if ($PSScriptRoot) {
+    if (Test-Path (Join-Path $PSScriptRoot "bin\isthmus.exe")) {
+        $localCandidate = Join-Path $PSScriptRoot "bin\isthmus.exe"
+    } elseif (Test-Path (Join-Path $PSScriptRoot "isthmus.exe")) {
+        $localCandidate = Join-Path $PSScriptRoot "isthmus.exe"
+    }
+}
+
+if ($localCandidate -and (Test-Path $localCandidate)) {
+    Write-Host "[2/4] Copying binary from $localCandidate..." -ForegroundColor Yellow
+    Copy-Item $localCandidate -Destination $targetExe -Force
+} else {
+    Write-Host "[2/4] Downloading latest Isthmus Windows binary from GitHub..." -ForegroundColor Yellow
+    $downloadUrl = "https://github.com/AtlasResearch-Labs/Isthmus/releases/latest/download/isthmus-windows-amd64.exe"
+    try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        Invoke-WebRequest -Uri $downloadUrl -OutFile $targetExe -UseBasicParsing
+    } catch {
+        Write-Host "  -> Releases download failed, fetching from repository..." -ForegroundColor Yellow
+        Invoke-WebRequest -Uri "https://raw.githubusercontent.com/AtlasResearch-Labs/Isthmus/main/dist/binaries/isthmus-windows-amd64.exe" -OutFile $targetExe -UseBasicParsing
+    }
 }
 
 # 3. Add to User Environment PATH

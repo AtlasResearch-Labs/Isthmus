@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,7 +16,7 @@ const (
 	DefaultBroadcastPort = 7755
 	BroadcastMagic       = "ISTHMUS_BEACON_V1"
 	PeerExpiryDuration   = 45 * time.Second
-	AnnounceInterval     = 10 * time.Second
+	AnnounceInterval     = 3 * time.Second
 )
 
 type AnnouncePacket struct {
@@ -84,10 +85,15 @@ func (s *DiscoveryService) Start(ctx context.Context) error {
 	listenAddr := fmt.Sprintf("0.0.0.0:%d", s.port)
 	conn, err := net.ListenPacket("udp4", listenAddr)
 	if err != nil {
-		return fmt.Errorf("failed to bind UDP listener on %s: %w", listenAddr, err)
+		// If port is already bound (e.g. background daemon is running), bind to an ephemeral port
+		listenAddr = "0.0.0.0:0"
+		conn, err = net.ListenPacket("udp4", listenAddr)
+		if err != nil {
+			return fmt.Errorf("failed to bind UDP listener on %s: %w", listenAddr, err)
+		}
 	}
 
-	s.log.Info("LAN discovery service active on %s", listenAddr)
+	s.log.Info("LAN discovery service active on %s", conn.LocalAddr().String())
 
 	go s.listenLoop(ctx, conn)
 	go s.announceLoop(ctx)
@@ -147,6 +153,16 @@ func (s *DiscoveryService) listenLoop(ctx context.Context, conn net.PacketConn) 
 			LastSeen:    time.Now(),
 		}
 
+		// Send immediate announcement reply back to the sender on discovery port
+		replyPacket := s.localPacket
+		replyPacket.Timestamp = time.Now().Unix()
+		if replyData, err := json.Marshal(replyPacket); err == nil {
+			if targetUDP, err := net.ResolveUDPAddr("udp4", fmt.Sprintf("%s:%d", host, s.port)); err == nil {
+				_, _ = conn.WriteTo(replyData, targetUDP)
+			}
+			_, _ = conn.WriteTo(replyData, addr)
+		}
+
 		s.mu.Lock()
 		_, exists := s.peers[peer.DeviceID]
 		s.peers[peer.DeviceID] = peer
@@ -182,20 +198,6 @@ func (s *DiscoveryService) announceLoop(ctx context.Context) {
 }
 
 func (s *DiscoveryService) broadcastOnce() {
-	broadcastAddr := fmt.Sprintf("255.255.255.255:%d", s.port)
-	addr, err := net.ResolveUDPAddr("udp4", broadcastAddr)
-	if err != nil {
-		s.log.Debug("Failed to resolve broadcast address: %v", err)
-		return
-	}
-
-	conn, err := net.DialUDP("udp4", nil, addr)
-	if err != nil {
-		s.log.Debug("Failed to dial UDP broadcast: %v", err)
-		return
-	}
-	defer conn.Close()
-
 	packet := s.localPacket
 	packet.Timestamp = time.Now().Unix()
 
@@ -204,7 +206,88 @@ func (s *DiscoveryService) broadcastOnce() {
 		return
 	}
 
-	_, _ = conn.Write(data)
+	// 1. Send to generic IPv4 broadcast
+	broadcastAddr := fmt.Sprintf("255.255.255.255:%d", s.port)
+	if addr, err := net.ResolveUDPAddr("udp4", broadcastAddr); err == nil {
+		if conn, err := net.DialUDP("udp4", nil, addr); err == nil {
+			_, _ = conn.Write(data)
+			_ = conn.Close()
+		}
+	}
+
+	// 2. Enumerate and broadcast across all active local network interfaces
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return
+	}
+
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagBroadcast == 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, a := range addrs {
+			ipNet, ok := a.(*net.IPNet)
+			if !ok || ipNet.IP.To4() == nil || ipNet.IP.IsLoopback() {
+				continue
+			}
+			ip := ipNet.IP.To4()
+			mask := ipNet.Mask
+			if len(mask) == 16 {
+				mask = mask[12:]
+			}
+			if len(mask) != 4 {
+				continue
+			}
+			bcast := net.IPv4(
+				ip[0]|^mask[0],
+				ip[1]|^mask[1],
+				ip[2]|^mask[2],
+				ip[3]|^mask[3],
+			)
+			bcastAddr := &net.UDPAddr{IP: bcast, Port: s.port}
+			if bConn, err := net.DialUDP("udp4", nil, bcastAddr); err == nil {
+				_, _ = bConn.Write(data)
+				_ = bConn.Close()
+			}
+		}
+	}
+
+	// 3. Unicast ping all known peers in cache
+	s.mu.RLock()
+	peers := make([]DiscoveredPeer, 0, len(s.peers))
+	for _, p := range s.peers {
+		peers = append(peers, p)
+	}
+	s.mu.RUnlock()
+
+	for _, p := range peers {
+		s.PingEndpoint(p.LANEndpoint)
+	}
+}
+
+func (s *DiscoveryService) PingEndpoint(endpoint string) {
+	host, _, err := net.SplitHostPort(endpoint)
+	if err != nil {
+		host = endpoint
+	}
+	if host == "" || strings.HasPrefix(host, "127.") {
+		return
+	}
+	targetAddr := fmt.Sprintf("%s:%d", host, s.port)
+	if addr, err := net.ResolveUDPAddr("udp4", targetAddr); err == nil {
+		if conn, err := net.DialUDP("udp4", nil, addr); err == nil {
+			packet := s.localPacket
+			packet.Timestamp = time.Now().Unix()
+			if data, err := json.Marshal(packet); err == nil {
+				_, _ = conn.Write(data)
+			}
+			_ = conn.Close()
+		}
+	}
 }
 
 func (s *DiscoveryService) cleanupLoop(ctx context.Context) {

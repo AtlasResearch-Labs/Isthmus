@@ -74,7 +74,7 @@ func (r *AutoRouter) DialPeer(ctx context.Context, target string) (*RoutedConnec
 
 	// 1. Tier 1: LAN Discovery
 	r.log.Info("Attempting Tier 1 (LAN discovery) for '%s'...", target)
-	lanCtx, lanCancel := context.WithTimeout(ctx, 1500*time.Millisecond)
+	lanCtx, lanCancel := context.WithTimeout(ctx, 4*time.Second)
 	lanEndpoint, err := r.resolver.ResolvePeerEndpoint(lanCtx, target)
 	lanCancel()
 

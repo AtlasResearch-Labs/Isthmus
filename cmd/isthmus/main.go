@@ -345,6 +345,32 @@ func runServerLoop(args []string, isDaemon bool) {
 		cfg.ListenPort,
 	)
 
+	disc.OnPeerDiscovered(func(peer discovery.DiscoveredPeer) {
+		latestCfg, err := config.LoadConfig("")
+		if err == nil {
+			updated := false
+			if p, exists := latestCfg.GetPeer(peer.DeviceID); exists {
+				p.LastSeenEndpoint = peer.LANEndpoint
+				p.LastSeenTime = peer.LastSeen
+				_ = latestCfg.AddPeer(p)
+				updated = true
+			} else {
+				for _, p := range latestCfg.Peers {
+					if strings.EqualFold(p.DeviceName, peer.DeviceName) {
+						p.LastSeenEndpoint = peer.LANEndpoint
+						p.LastSeenTime = peer.LastSeen
+						_ = latestCfg.AddPeer(p)
+						updated = true
+						break
+					}
+				}
+			}
+			if updated {
+				_ = latestCfg.Save("")
+			}
+		}
+	})
+
 	if err := disc.Start(ctx); err != nil {
 		logger.Warn("LAN discovery broadcast failed to start: %v", err)
 	} else {
@@ -387,6 +413,21 @@ func connectViaRouter(target string, directEndpoint ...string) (*fileserver.Clie
 		return nil, "", fmt.Errorf("please run 'isthmus init' first: %w", err)
 	}
 
+	recordEndpoint := func(ep string) {
+		if strings.HasPrefix(ep, "127.") || ep == "" {
+			return
+		}
+		for id, p := range cfg.Peers {
+			if strings.EqualFold(id, target) || strings.EqualFold(p.DeviceName, target) {
+				p.LastSeenEndpoint = ep
+				p.LastSeenTime = time.Now()
+				_ = cfg.AddPeer(p)
+				_ = cfg.Save("")
+				break
+			}
+		}
+	}
+
 	if len(directEndpoint) > 0 && directEndpoint[0] != "" {
 		endpoint := directEndpoint[0]
 		logger.Info("Bypassing router, connecting directly to %s...", endpoint)
@@ -402,6 +443,7 @@ func connectViaRouter(target string, directEndpoint ...string) (*fileserver.Clie
 			conn.Close()
 			return nil, "", fmt.Errorf("SFTP handshake with %s failed: %w", endpoint, err)
 		}
+		recordEndpoint(endpoint)
 		return client, "Direct Endpoint", nil
 	}
 
@@ -423,6 +465,7 @@ func connectViaRouter(target string, directEndpoint ...string) (*fileserver.Clie
 		return nil, "", fmt.Errorf("SFTP handshake over %s connection failed: %w", routed.Tier.String(), err)
 	}
 
+	recordEndpoint(routed.Addr)
 	return client, routed.Tier.String(), nil
 }
 
@@ -1127,6 +1170,78 @@ func cmdGUI(args []string) {
 
 	guiServer := gui.NewServer(cfg)
 	url := fmt.Sprintf("http://127.0.0.1:%d", *port)
+
+	// Start local node SFTP server & discovery beacon in background if not already running
+	go func() {
+		var allowedKeys []string
+		for _, peer := range cfg.Peers {
+			if peer.Allowed && peer.PublicKey != "" {
+				allowedKeys = append(allowedKeys, peer.PublicKey)
+			}
+		}
+
+		sftpServer, err := fileserver.NewServer(fileserver.ServerConfig{
+			Port:        cfg.SFTPPort,
+			RootDir:     cfg.SharedDir,
+			AllowedKeys: allowedKeys,
+			AllowedKeysFunc: func() []string {
+				latestCfg, err := config.LoadConfig("")
+				if err != nil {
+					return allowedKeys
+				}
+				var keys []string
+				for _, peer := range latestCfg.Peers {
+					if peer.Allowed && peer.PublicKey != "" {
+						keys = append(keys, peer.PublicKey)
+					}
+				}
+				return keys
+			},
+		})
+		if err == nil && sftpServer.Start() == nil {
+			defer sftpServer.Stop()
+			disc := discovery.NewDiscoveryService(
+				cfg.BroadcastPort,
+				cfg.DeviceID,
+				cfg.DeviceName,
+				cfg.PublicKey,
+				cfg.VirtualIP,
+				sftpServer.Port(),
+				cfg.ListenPort,
+			)
+			disc.OnPeerDiscovered(func(peer discovery.DiscoveredPeer) {
+				latestCfg, err := config.LoadConfig("")
+				if err == nil {
+					updated := false
+					if p, exists := latestCfg.GetPeer(peer.DeviceID); exists {
+						p.LastSeenEndpoint = peer.LANEndpoint
+						p.LastSeenTime = peer.LastSeen
+						_ = latestCfg.AddPeer(p)
+						updated = true
+					} else {
+						for _, p := range latestCfg.Peers {
+							if strings.EqualFold(p.DeviceName, peer.DeviceName) {
+								p.LastSeenEndpoint = peer.LANEndpoint
+								p.LastSeenTime = peer.LastSeen
+								_ = latestCfg.AddPeer(p)
+								updated = true
+								break
+							}
+						}
+					}
+					if updated {
+						_ = latestCfg.Save("")
+					}
+				}
+			})
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			if err := disc.Start(ctx); err == nil {
+				defer disc.Stop()
+			}
+			select {}
+		}
+	}()
 
 	if !*noOpen {
 		go func() {

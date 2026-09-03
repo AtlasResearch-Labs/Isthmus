@@ -48,7 +48,7 @@ func (r *PeerResolver) ResolvePeerEndpoint(ctx context.Context, target string) (
 
 	// Active short scan on LAN if discovery service can be started
 	r.log.Info("Scanning LAN for peer '%s'...", target)
-	scanCtx, scanCancel := context.WithTimeout(ctx, 2*time.Second)
+	scanCtx, scanCancel := context.WithTimeout(ctx, 3500*time.Millisecond)
 	defer scanCancel()
 
 	disc := NewDiscoveryService(
@@ -64,6 +64,25 @@ func (r *PeerResolver) ResolvePeerEndpoint(ctx context.Context, target string) (
 	resolvedChan := make(chan string, 1)
 	disc.OnPeerDiscovered(func(peer DiscoveredPeer) {
 		if strings.EqualFold(peer.DeviceName, target) || strings.EqualFold(peer.DeviceID, target) {
+			// Update and persist discovered endpoint
+			if cp, exists := r.cfg.GetPeer(peer.DeviceID); exists {
+				cp.LastSeenEndpoint = peer.LANEndpoint
+				cp.LastSeenTime = time.Now()
+				_ = r.cfg.AddPeer(cp)
+				_ = r.cfg.Save("")
+			} else {
+				for id, p := range r.cfg.Peers {
+					if strings.EqualFold(p.DeviceName, peer.DeviceName) {
+						p.LastSeenEndpoint = peer.LANEndpoint
+						p.LastSeenTime = time.Now()
+						_ = r.cfg.AddPeer(p)
+						_ = r.cfg.Save("")
+						_ = id
+						break
+					}
+				}
+			}
+
 			select {
 			case resolvedChan <- peer.LANEndpoint:
 			default:
@@ -73,6 +92,12 @@ func (r *PeerResolver) ResolvePeerEndpoint(ctx context.Context, target string) (
 
 	if err := disc.Start(scanCtx); err == nil {
 		defer disc.Stop()
+		// Directly ping any configured peer endpoints for instant response
+		for _, p := range r.cfg.Peers {
+			if p.LastSeenEndpoint != "" {
+				disc.PingEndpoint(p.LastSeenEndpoint)
+			}
+		}
 		select {
 		case ep := <-resolvedChan:
 			return ep, nil
@@ -80,16 +105,24 @@ func (r *PeerResolver) ResolvePeerEndpoint(ctx context.Context, target string) (
 		}
 	}
 
+	isNotLoopback := func(ep string) bool {
+		host, _, err := net.SplitHostPort(ep)
+		if err != nil {
+			host = ep
+		}
+		return host != "127.0.0.1" && host != "::1" && host != "localhost" && !strings.HasPrefix(host, "127.")
+	}
+
 	// Check configured peers in config.json as fallback
 	if peer, ok := r.cfg.GetPeer(target); ok {
-		if peer.LastSeenEndpoint != "" {
+		if peer.LastSeenEndpoint != "" && isNotLoopback(peer.LastSeenEndpoint) {
 			return peer.LastSeenEndpoint, nil
 		}
 	}
 
 	for _, peer := range r.cfg.Peers {
 		if strings.EqualFold(peer.DeviceName, target) {
-			if peer.LastSeenEndpoint != "" {
+			if peer.LastSeenEndpoint != "" && isNotLoopback(peer.LastSeenEndpoint) {
 				return peer.LastSeenEndpoint, nil
 			}
 		}

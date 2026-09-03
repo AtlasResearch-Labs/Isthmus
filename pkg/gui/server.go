@@ -883,19 +883,21 @@ func (s *Server) handleTerminalExec(w http.ResponseWriter, r *http.Request) {
 	var out []byte
 	var execErr error
 
-	if req.Target == "local" || req.Target == "" {
+	if req.Target == "local" || req.Target == "" || req.Target == s.cfg.DeviceID {
 		if runtime.GOOS == "windows" {
 			out, execErr = exec.Command("cmd.exe", "/c", cmdStr).CombinedOutput()
 		} else {
 			out, execErr = exec.Command("/bin/sh", "-c", cmdStr).CombinedOutput()
 		}
 	} else {
-		peer, exists := s.cfg.Peers[req.Target]
-		if !exists {
-			http.Error(w, "Unknown peer", http.StatusNotFound)
-			return
+		res := s.runner.ExecuteRemote(r.Context(), req.Target, cmdStr)
+		out = []byte(res.Stdout)
+		if res.Error != "" {
+			if len(out) == 0 {
+				out = []byte(res.Error)
+			}
+			execErr = fmt.Errorf("%s", res.Error)
 		}
-		out = []byte(fmt.Sprintf("[%s] %s: command execution dispatched over Isthmus tunnel\n", peer.DeviceName, peer.VirtualIP))
 	}
 
 	exitCode := 0
@@ -903,11 +905,16 @@ func (s *Server) handleTerminalExec(w http.ResponseWriter, r *http.Request) {
 		exitCode = 1
 	}
 
+	errMsg := ""
+	if execErr != nil {
+		errMsg = execErr.Error()
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"output":    string(out),
 		"exit_code": exitCode,
-		"error":     fmt.Sprintf("%v", execErr),
+		"error":     errMsg,
 	})
 }
 

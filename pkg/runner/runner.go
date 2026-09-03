@@ -5,11 +5,14 @@ import (
 	"fmt"
 	"os/exec"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
 	"isthmus/internal/logger"
 	"isthmus/pkg/config"
+	"isthmus/pkg/discovery"
+	"isthmus/pkg/fileserver"
 )
 
 type JobTargetResult struct {
@@ -122,20 +125,7 @@ func (d *Dispatcher) DispatchJob(ctx context.Context, command string, targets []
 			if tgt == "local" || tgt == "" || tgt == d.cfg.DeviceID {
 				r = d.ExecuteLocal(ctx, command)
 			} else {
-				// Remote peer execution
-				peerName := tgt
-				if p, ok := d.cfg.GetPeer(tgt); ok {
-					peerName = p.DeviceName
-				}
-				// Format remote execution result
-				r = JobTargetResult{
-					TargetID:   tgt,
-					TargetName: peerName,
-					Timestamp:  time.Now(),
-					Stdout:     fmt.Sprintf("[%s] Remote job dispatched over secure mesh tunnel", peerName),
-					ExitCode:   0,
-					DurationMs: 12.4,
-				}
+				r = d.ExecuteRemote(ctx, tgt, command)
 			}
 			mu.Lock()
 			batch.Results = append(batch.Results, r)
@@ -146,6 +136,91 @@ func (d *Dispatcher) DispatchJob(ctx context.Context, command string, targets []
 	wg.Wait()
 	batch.CompletedAt = time.Now()
 	return batch
+}
+
+// ExecuteRemote runs a command on a remote mesh peer over the secure SSH session channel.
+func (d *Dispatcher) ExecuteRemote(ctx context.Context, target string, command string) JobTargetResult {
+	start := time.Now()
+	peerName := target
+	peerID := target
+
+	if p, ok := d.cfg.GetPeer(target); ok {
+		peerName = p.DeviceName
+		peerID = p.DeviceID
+		if !p.Allowed {
+			return JobTargetResult{
+				TargetID:   peerID,
+				TargetName: peerName,
+				Timestamp:  start,
+				Error:      fmt.Sprintf("peer '%s' is not allowed in ACL", peerName),
+				ExitCode:   -1,
+			}
+		}
+	} else {
+		for id, p := range d.cfg.Peers {
+			if strings.EqualFold(p.DeviceName, target) {
+				peerName = p.DeviceName
+				peerID = id
+				if !p.Allowed {
+					return JobTargetResult{
+						TargetID:   peerID,
+						TargetName: peerName,
+						Timestamp:  start,
+						Error:      fmt.Sprintf("peer '%s' is not allowed in ACL", peerName),
+						ExitCode:   -1,
+					}
+				}
+				break
+			}
+		}
+	}
+
+	res := JobTargetResult{
+		TargetID:   peerID,
+		TargetName: peerName,
+		Timestamp:  start,
+	}
+
+	router := discovery.NewAutoRouter(d.cfg)
+	routed, err := router.DialPeer(ctx, target)
+	if err != nil {
+		duration := time.Since(start)
+		res.Duration = duration
+		res.DurationMs = float64(duration.Microseconds()) / 1000.0
+		res.Error = fmt.Sprintf("failed to connect to peer '%s': %v", peerName, err)
+		res.ExitCode = -1
+		return res
+	}
+	defer routed.Conn.Close()
+
+	client, err := fileserver.NewClientFromConn(routed.Conn, fileserver.ClientConfig{
+		Endpoint:   routed.Addr,
+		PrivateKey: d.cfg.PrivateKey,
+	})
+	if err != nil {
+		duration := time.Since(start)
+		res.Duration = duration
+		res.DurationMs = float64(duration.Microseconds()) / 1000.0
+		res.Error = fmt.Sprintf("SSH session handshake failed: %v", err)
+		res.ExitCode = -1
+		return res
+	}
+	defer client.Close()
+
+	out, err := client.Exec(command)
+	duration := time.Since(start)
+	res.Duration = duration
+	res.DurationMs = float64(duration.Microseconds()) / 1000.0
+	res.Stdout = out
+
+	if err != nil {
+		res.Error = err.Error()
+		res.ExitCode = 1
+	} else {
+		res.ExitCode = 0
+	}
+
+	return res
 }
 
 // QuickCommandTemplates provides standard administrative templates

@@ -10,7 +10,9 @@ import (
 	"io"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -235,11 +237,73 @@ func (s *Server) handleConnection(nConn net.Conn) {
 							go s.serveSFTP(channel)
 						}
 					}
+				case "exec":
+					var payload struct {
+						Command string
+					}
+					if err := ssh.Unmarshal(req.Payload, &payload); err == nil {
+						ok = true
+						go s.serveExec(channel, payload.Command)
+					}
 				}
 				req.Reply(ok, nil)
 			}
 		}(requests)
 	}
+}
+
+func (s *Server) serveExec(channel ssh.Channel, cmdStr string) {
+	defer channel.Close()
+
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		cmd = exec.Command("cmd.exe", "/c", cmdStr)
+	} else {
+		cmd = exec.Command("/bin/sh", "-c", cmdStr)
+	}
+	cmd.Dir = s.config.RootDir
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		fmt.Fprintf(channel, "Error creating stdout pipe: %v\n", err)
+		_, _ = channel.SendRequest("exit-status", false, ssh.Marshal(struct{ ExitStatus uint32 }{ExitStatus: 1}))
+		return
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		fmt.Fprintf(channel, "Error creating stderr pipe: %v\n", err)
+		_, _ = channel.SendRequest("exit-status", false, ssh.Marshal(struct{ ExitStatus uint32 }{ExitStatus: 1}))
+		return
+	}
+
+	if err := cmd.Start(); err != nil {
+		fmt.Fprintf(channel, "Error starting command: %v\n", err)
+		_, _ = channel.SendRequest("exit-status", false, ssh.Marshal(struct{ ExitStatus uint32 }{ExitStatus: 1}))
+		return
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		_, _ = io.Copy(channel, stdout)
+	}()
+	go func() {
+		defer wg.Done()
+		_, _ = io.Copy(channel.Stderr(), stderr)
+	}()
+
+	exitCode := uint32(0)
+	if err := cmd.Wait(); err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			exitCode = uint32(exitErr.ExitCode())
+		} else {
+			exitCode = 1
+		}
+	}
+	wg.Wait()
+
+	_, _ = channel.SendRequest("exit-status", false, ssh.Marshal(struct{ ExitStatus uint32 }{ExitStatus: exitCode}))
 }
 
 func (s *Server) serveSFTP(channel ssh.Channel) {

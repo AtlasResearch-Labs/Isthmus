@@ -379,3 +379,19 @@ func (c *Client) Close() error {
 	}
 	return nil
 }
+
+// Exec runs a remote command on the peer over an SSH session channel
+func (c *Client) Exec(cmd string) (string, error) {
+	if c.sshConn == nil {
+		return "", fmt.Errorf("SSH connection not active")
+	}
+	session, err := c.sshConn.NewSession()
+	if err != nil {
+		return "", fmt.Errorf("failed to create SSH session: %w", err)
+	}
+	defer session.Close()
+
+	out, err := session.CombinedOutput(cmd)
+	return string(out), err
+}
+

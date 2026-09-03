@@ -1,5 +1,6 @@
 # Binaries and build outputs
 bin/
+!packaging/npm/bin/
 *.exe
 *.exe~
 *.dll

@@ -56,6 +56,20 @@
 
 ## 📦 Quick Installation
 
+### ⚡ Global NPM & Instant NPX (Windows, macOS, Linux)
+Run immediately with zero installation:
+```bash
+# Instant launch of Studio Workbench GUI
+npx isthmus-mesh gui --port 7788
+
+# Or install globally for direct CLI access anywhere
+npm install -g isthmus-mesh
+
+# Run anywhere
+isthmus status
+isthmus gui
+```
+
 ### 🪟 Windows (1-Click Installer)
 Run PowerShell as Administrator or standard user:
 ```powershell

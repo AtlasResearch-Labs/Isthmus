@@ -1,13 +1,16 @@
 {
-  "name": "isthmus",
+  "name": "isthmus-mesh",
   "version": "0.5.0",
-  "description": "Cross-Device Zero-Trust Secure Tunnel and Distributed Mesh File System",
+  "description": "Cross-Device Zero-Trust Secure Tunnel, Distributed Mesh File System & Studio Workbench",
   "main": "bin/run.js",
   "bin": {
-    "isthmus": "bin/run.js"
+    "isthmus": "bin/run.js",
+    "isthmus-mesh": "bin/run.js"
   },
   "files": [
-    "bin/"
+    "bin/run.js",
+    "README.md",
+    "LICENSE"
   ],
   "keywords": [
     "mesh",
@@ -18,12 +21,21 @@
     "zerotier",
     "tailscale",
     "file-sharing",
-    "sync"
+    "sync",
+    "zero-trust",
+    "encrypted-vault",
+    "webdav",
+    "workbench",
+    "cli"
   ],
-  "author": "Atlas Research Labs",
+  "author": "Atlas Research Labs <victor@atlasresearchlabs.online>",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/AtlasResearch-Labs/Isthmus.git"
-  }
+    "url": "git+https://github.com/AtlasResearch-Labs/Isthmus.git"
+  },
+  "bugs": {
+    "url": "https://github.com/AtlasResearch-Labs/Isthmus/issues"
+  },
+  "homepage": "https://github.com/AtlasResearch-Labs/Isthmus#readme"
 }

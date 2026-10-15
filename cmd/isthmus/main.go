@@ -33,7 +33,7 @@ import (
 	"isthmus/pkg/webdav"
 )
 
-const version = "0.5.0-phase4"
+var version = "0.5.0"
 
 func printUsage() {
 	fmt.Printf("%s\n", tui.RetroTitleBar("ISTHMUS - CROSS-DEVICE SECURE TUNNEL & FILE SYSTEM", 78))
@@ -129,9 +129,9 @@ func main() {
 		cmdVault(os.Args[2:])
 	case "mount":
 		cmdMount(os.Args[2:])
-	case "version":
+	case "version", "-v", "--version", "-V":
 		fmt.Printf("Isthmus version %s\n", version)
-	case "help", "-h", "--help":
+	case "help", "-h", "--help", "-help":
 		printUsage()
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\nRun 'isthmus help' for usage.\n", command)

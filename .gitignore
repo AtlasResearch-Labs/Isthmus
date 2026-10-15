@@ -1,12 +1,13 @@
 # Binaries and build outputs
 bin/
-!packaging/npm/bin/
+packaging/npm/bin/native/
 *.exe
 *.exe~
 *.dll
 *.so
 *.dylib
 *.apk
+*.deb
 
 # Test outputs and logs
 *.test

@@ -60,10 +60,10 @@
 Run immediately with zero installation:
 ```bash
 # Instant launch of Studio Workbench GUI
-npx isthmus-mesh gui --port 7788
+npx isthmusio gui --port 7788
 
 # Or install globally for direct CLI access anywhere
-npm install -g isthmus-mesh
+npm install -g isthmusio
 
 # Run anywhere
 isthmus status

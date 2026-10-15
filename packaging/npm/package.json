@@ -1,11 +1,11 @@
 {
-  "name": "isthmus-mesh",
+  "name": "isthmusio",
   "version": "0.5.0",
   "description": "Cross-Device Zero-Trust Secure Tunnel, Distributed Mesh File System & Studio Workbench",
   "main": "bin/run.js",
   "bin": {
     "isthmus": "bin/run.js",
-    "isthmus-mesh": "bin/run.js"
+    "isthmusio": "bin/run.js"
   },
   "files": [
     "bin/run.js",
